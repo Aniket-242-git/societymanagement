@@ -43,6 +43,13 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get("category")
         if category:
             qs = qs.filter(category=category)
+        # month-wise filter: ?year=2026&month=9 on expense_date
+        from API.apps.core.pagination import parse_month_filter
+        y, m = parse_month_filter(self.request)
+        if y:
+            qs = qs.filter(expense_date__year=y)
+        if m:
+            qs = qs.filter(expense_date__month=m)
         return qs
 
     # ------------------------------------------------------------- list

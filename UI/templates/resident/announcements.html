@@ -3,6 +3,16 @@
 {% block content %}
 <div class="container">
   <h3 class="fw-bold mb-4"><i class="bi bi-megaphone me-2"></i>Society Announcements</h3>
+
+  <!-- Search + month-wise filter bar (backend filtering via ?search=&year=&month=) -->
+  <div class="card panel-card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <input id="search-ann" class="form-control form-control-sm" style="max-width:280px" placeholder="Search announcements…">
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+    </div>
+  </div>
+
   <div id="ann-list" class="mb-3"><p class="text-center text-muted py-5">Loading…</p></div>
   <div id="ann-pager"></div>
 </div>
@@ -10,11 +20,17 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc } = SMS; const { formatDate, renderPager } = SMSUI;
+  const { Api, esc } = SMS; const { formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1;
+
+  // populate the month-wise filter dropdowns
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
+
   function load(p) {
     page = p || 1;
-    Api.get("announcements/", { page }).done(function (res) {
+    const params = monthParams({ page });
+    const s = $("#search-ann").val(); if (s) params.search = s;
+    Api.get("announcements/", params).done(function (res) {
       const d = res.data || {};
       const rows = d.results || d || [];
       $("#ann-list").html(rows.length ? rows.map(a => `
@@ -29,9 +45,14 @@ $(function () {
             ${a.attachment ? `<a href="${a.attachment}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-paperclip me-1"></i>Attachment</a>` : ""}
           </div>
         </div>`).join("") : '<p class="text-center text-muted py-5">No announcements yet.</p>');
-      renderPager("#ann-pager", d.count || rows.length, page, 20, load);
+      renderPager("#ann-pager", d.count || rows.length, page, d.page_size || 10, load);
     });
   }
+
+  // re-query (page 1) whenever search / month / year changes
+  $("#month-filter, #year-filter").on("change", () => load(1));
+  let annSearchT; $("#search-ann").on("input", function () { clearTimeout(annSearchT); annSearchT = setTimeout(() => load(1), 400); });
+
   load(1);
 });
 </script>

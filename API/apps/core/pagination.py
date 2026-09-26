@@ -59,6 +59,38 @@ def build_search_q(term, fields):
     return q
 
 
+def parse_month_filter(request):
+    """Read ?year=&month= (or ?month=YYYY-MM) query params.
+
+    Returns (year:int|None, month:int|None). Used by the month-wise filters on
+    Payments / Announcements / Expenses list endpoints.
+    """
+    year = request.query_params.get("year")
+    month = request.query_params.get("month")
+    y = m = None
+    try:
+        y = int(year) if year else None
+    except (TypeError, ValueError):
+        y = None
+    if month:
+        s = str(month).strip()
+        if "-" in s:  # supports month=2026-09 as well
+            parts = s.split("-")
+            try:
+                y = int(parts[0])
+                m = int(parts[1])
+            except (ValueError, IndexError):
+                m = None
+        else:
+            try:
+                m = int(s)
+            except ValueError:
+                m = None
+        if m is not None and not (1 <= m <= 12):
+            m = None
+    return y, m
+
+
 class StandardPagination(PageNumberPagination):
     """count / page / total_pages / next / previous / results — newest first.
 

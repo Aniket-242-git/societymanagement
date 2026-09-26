@@ -8,10 +8,16 @@
   </div>
 
   <div class="card panel-card">
+    <!-- Search + month-wise filter bar (backend filtering via ?search=&year=&month=) -->
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center border-bottom">
+      <input id="search-pay" class="form-control form-control-sm" style="max-width:240px" placeholder="Search receipt / remark…">
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+    </div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-hover mb-0">
-          <thead><tr><th>Amount</th><th>Receipt No</th><th>Mode</th><th>Period</th><th>Status</th><th>Proof</th><th>Submitted</th></tr></thead>
+          <thead><tr><th>Amount</th><th>Receipt No</th><th>Mode</th><th>Month</th><th>Status</th><th>Proof</th><th>Submitted</th></tr></thead>
           <tbody id="pay-tbody"><tr><td colspan="7" class="text-center text-muted py-5">Loading…</td></tr></tbody>
         </table>
       </div>
@@ -62,8 +68,11 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc, toastSuccess } = SMS; const { INR, statusPill, formatDate, renderPager } = SMSUI;
+  const { Api, esc, toastSuccess } = SMS; const { INR, statusPill, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, flatId = null;
+
+  // populate the month-wise filter dropdowns (for the list above)
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
 
   // populate month/year selects
   const mSel = $('#pay-form [name="period_month"]');
@@ -76,19 +85,25 @@ $(function () {
   function load(p) {
     page = p || 1;
     if (!flatId) { $("#pay-tbody").html('<tr><td colspan="7" class="text-center text-warning py-5">Your account is not mapped to a flat yet.</td></tr>'); return; }
-    Api.get("payments/", { page, flat: flatId }).done(function (res) {
+    const params = monthParams({ page, flat: flatId });
+    const s = $("#search-pay").val(); if (s) params.search = s;
+    Api.get("payments/", params).done(function (res) {
       const d = res.data || {};
       const rows = d.results || d || [];
       $("#pay-tbody").html(rows.length ? rows.map(x => `
         <tr><td class="fw-semibold">${INR(x.amount)}</td><td class="small">${esc(x.receipt_no || "-")}</td>
-        <td>${esc(x.mode_display)}</td><td class="small">${x.period_month}/${x.period_year}</td>
+        <td>${esc(x.mode_display)}</td><td class="small">${esc(x.month_display || x.period_month + "/" + x.period_year)}</td>
         <td>${statusPill(x.status)}${x.rejection_reason ? `<div class="text-danger small mt-1">${esc(x.rejection_reason)}</div>` : ""}</td>
         <td>${x.proof_image ? `<a href="${x.proof_image}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i></a>` : "-"}</td>
         <td class="small">${formatDate(x.created_at)}</td></tr>`).join("")
         : '<tr><td colspan="7" class="text-center text-muted py-5">No payments yet</td></tr>');
-      renderPager("#pay-pager", d.count || rows.length, page, 20, load);
+      renderPager("#pay-pager", d.count || rows.length, page, d.page_size || 10, load);
     });
   }
+
+  // re-query (page 1) whenever search / month / year changes
+  $("#month-filter, #year-filter").on("change", () => load(1));
+  let paySearchT; $("#search-pay").on("input", function () { clearTimeout(paySearchT); paySearchT = setTimeout(() => load(1), 400); });
 
   $("#btn-pay").on("click", function () { $("#pay-form")[0].reset(); $("#payModal").modal("show"); });
 
