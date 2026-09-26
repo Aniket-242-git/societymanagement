@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}My Payments{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-cash-coin me-2"></i>Maintenance Payments</h3>
+    <button class="btn btn-success" id="btn-pay"><i class="bi bi-plus-lg me-1"></i>Submit Payment</button>
+  </div>
+
+  <div class="card panel-card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Amount</th><th>Receipt No</th><th>Mode</th><th>Period</th><th>Status</th><th>Proof</th><th>Submitted</th></tr></thead>
+          <tbody id="pay-tbody"><tr><td colspan="7" class="text-center text-muted py-5">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white" id="pay-pager"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="payModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Submit Maintenance Payment</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="pay-form" enctype="multipart/form-data">
+        <div class="modal-body row g-3">
+          <div class="col-md-6"><label class="form-label">Amount (₹)</label>
+            <input name="amount" type="number" step="0.01" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Payment Mode</label>
+            <select name="mode" class="form-select">
+              <option value="upi">UPI</option><option value="cash">Cash</option><option value="cheque">Cheque</option>
+              <option value="netbanking">Net Banking</option><option value="card">Card</option><option value="other">Other</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label">UTR / Receipt Number</label>
+            <input name="receipt_no" class="form-control" placeholder="e.g. UTR ref from bank"></div>
+          <div class="col-md-3"><label class="form-label">Month</label>
+            <select name="period_month" class="form-select">
+              ${"" /* options injected by JS */}
+            </select></div>
+          <div class="col-md-3"><label class="form-label">Year</label>
+            <select name="period_year" class="form-select"></select></div>
+          <div class="col-12"><label class="form-label">Remark</label>
+            <input name="remark" class="form-control" maxlength="250"></div>
+          <div class="col-12"><label class="form-label">Payment Proof (screenshot / receipt)</label>
+            <input name="proof_image" type="file" accept="image/*" class="form-control" required></div>
+          <div class="col-12"><div class="alert alert-info small py-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i>Your payment will be marked <b>Pending</b> until the admin approves it.</div></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Submit for Approval</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { INR, statusPill, formatDate, renderPager } = SMSUI;
+  let page = 1, flatId = null;
+
+  // populate month/year selects
+  const mSel = $('#pay-form [name="period_month"]');
+  mSel.html(Array.from({length:12},(_,i)=>`<option value="${i+1}" ${i+1===new Date().getMonth()+1?"selected":""}>${new Date(2026,i).toLocaleString("en",{month:"short"})}</option>`).join(""));
+  const nowY = new Date().getFullYear();
+  $('#pay-form [name="period_year"]').html([nowY-1, nowY, nowY+1].map(y=>`<option ${y===nowY?"selected":""} value="${y}">${y}</option>`).join(""));
+
+  Api.get("auth/me/").done(function (res) { flatId = res.data.flat_id; load(1); });
+
+  function load(p) {
+    page = p || 1;
+    if (!flatId) { $("#pay-tbody").html('<tr><td colspan="7" class="text-center text-warning py-5">Your account is not mapped to a flat yet.</td></tr>'); return; }
+    Api.get("payments/", { page, flat: flatId }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#pay-tbody").html(rows.length ? rows.map(x => `
+        <tr><td class="fw-semibold">${INR(x.amount)}</td><td class="small">${esc(x.receipt_no || "-")}</td>
+        <td>${esc(x.mode_display)}</td><td class="small">${x.period_month}/${x.period_year}</td>
+        <td>${statusPill(x.status)}${x.rejection_reason ? `<div class="text-danger small mt-1">${esc(x.rejection_reason)}</div>` : ""}</td>
+        <td>${x.proof_image ? `<a href="${x.proof_image}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i></a>` : "-"}</td>
+        <td class="small">${formatDate(x.created_at)}</td></tr>`).join("")
+        : '<tr><td colspan="7" class="text-center text-muted py-5">No payments yet</td></tr>');
+      renderPager("#pay-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  $("#btn-pay").on("click", function () { $("#pay-form")[0].reset(); $("#payModal").modal("show"); });
+
+  $("#pay-form").on("submit", function (e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    fd.append("flat", flatId);
+    Api.upload("payments/submit/", fd).done(function (res) {
+      if (res.success) { toastSuccess(res.message); $("#payModal").modal("hide"); load(1); }
+    });
+  });
+
+  load(1);
+});
+</script>
+{% endblock %}

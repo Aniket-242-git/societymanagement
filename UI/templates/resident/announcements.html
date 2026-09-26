@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Announcements{% endblock %}
+{% block content %}
+<div class="container">
+  <h3 class="fw-bold mb-4"><i class="bi bi-megaphone me-2"></i>Society Announcements</h3>
+  <div id="ann-list" class="mb-3"><p class="text-center text-muted py-5">Loading…</p></div>
+  <div id="ann-pager"></div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc } = SMS; const { formatDate, renderPager } = SMSUI;
+  let page = 1;
+  function load(p) {
+    page = p || 1;
+    Api.get("announcements/", { page }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#ann-list").html(rows.length ? rows.map(a => `
+        <div class="card panel-card mb-3 ${a.pinned ? "border border-warning border-2" : ""}">
+          <div class="card-body">
+            <div class="d-flex justify-content-between flex-wrap gap-2">
+              <h5 class="fw-bold mb-1">${a.pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : ""}${esc(a.title)}</h5>
+              <span class="small text-muted">${formatDate(a.created_at)} · @${esc(a.created_by_name || "admin")}
+                ${a.expiry_date ? ' · <span class="text-danger">expires ' + formatDate(a.expiry_date) + "</span>" : ""}</span>
+            </div>
+            <p class="mb-2" style="white-space:pre-line">${esc(a.body)}</p>
+            ${a.attachment ? `<a href="${a.attachment}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-paperclip me-1"></i>Attachment</a>` : ""}
+          </div>
+        </div>`).join("") : '<p class="text-center text-muted py-5">No announcements yet.</p>');
+      renderPager("#ann-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+  load(1);
+});
+</script>
+{% endblock %}

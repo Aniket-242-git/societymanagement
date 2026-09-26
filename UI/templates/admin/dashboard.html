@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h3 class="fw-bold mb-1">Admin Dashboard</h3>
+      <p class="text-muted mb-0">Society operations at a glance — {{ today|default:"" }}</p>
+    </div>
+    <a href="/api/docs/" target="_blank" class="btn btn-outline-success btn-sm"><i class="bi bi-filetype-json me-1"></i>API Docs</a>
+  </div>
+
+  <div class="row g-3 mb-4" id="stat-cards">
+    <!-- filled by JS -->
+  </div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card panel-card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center py-3">
+          <span><i class="bi bi-cash-stack me-2"></i>Pending Maintenance Approvals</span>
+          <a href="/ui/admin/payments/" class="small">view all →</a>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Flat</th><th>Amount</th><th>Mode</th><th>Submitted</th><th></th></tr></thead>
+              <tbody id="pending-payments"><tr><td colspan="5" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card panel-card h-100">
+        <div class="card-header py-3"><i class="bi bi-exclamation-triangle me-2"></i>Open Issues</div>
+        <div class="card-body" id="open-issues-list">
+          <p class="text-muted text-center py-4">Loading…</p>
+        </div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header py-3"><i class="bi bi-graph-up-arrow me-2"></i>This Month: Collection vs Expense</div>
+        <div class="card-body"><canvas id="dash-chart" height="90"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc } = SMS; const { INR, statusPill, formatDate } = SMSUI;
+
+  function loadStats() {
+    Api.get("reports/dashboard/").done(function (res) {
+      if (!res.success) return;
+      const s = res.data;
+      $("#stat-cards").html(`
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-green"><i class="bi bi-door-open"></i></div>
+          <div><div class="stat-value">${s.active_flats}</div><div class="text-muted small">Active Flats</div></div>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-amber"><i class="bi bi-hourglass-split"></i></div>
+          <div><div class="stat-value">${s.pending_payments}</div><div class="text-muted small">Pending Payments</div></div>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-red"><i class="bi bi-exclamation-triangle"></i></div>
+          <div><div class="stat-value">${s.open_issues}</div><div class="text-muted small">Open Issues</div></div>
+        </div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-blue"><i class="bi bi-wallet2"></i></div>
+          <div><div class="stat-value">${INR(s.this_month_collection)}</div><div class="text-muted small">Collected This Month</div></div>
+        </div></div></div>`);
+
+      new Chart(document.getElementById("dash-chart"), {
+        type: "bar",
+        data: {
+          labels: ["This Month"],
+          datasets: [
+            { label: "Collections", data: [s.this_month_collection], backgroundColor: "#1e6f5c", borderRadius: 8 },
+            { label: "Expenses", data: [s.this_month_expense], backgroundColor: "#f4a825", borderRadius: 8 },
+          ],
+        },
+        options: { plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } },
+      });
+    });
+  }
+
+  function loadPending() {
+    Api.get("payments/", { status: "pending", page_size: 5 }).done(function (res) {
+      const rows = (res.data && res.data.results) || res.data || [];
+      $("#pending-payments").html(rows.length ? rows.map(p => `
+        <tr><td>${esc(p.flat_label)}</td><td class="fw-semibold">${INR(p.amount)}</td>
+        <td>${esc(p.mode_display)}</td><td>${formatDate(p.created_at)}</td>
+        <td><a href="/ui/admin/payments/" class="btn btn-sm btn-outline-success">Review</a></td></tr>`).join("")
+        : `<tr><td colspan="5" class="text-center text-muted py-4">No pending payments 🎉</td></tr>`);
+    });
+  }
+
+  function loadIssues() {
+    Api.get("issues/", { page_size: 5 }).done(function (res) {
+      const rows = ((res.data && res.data.results) || res.data || []).filter(i => i.status !== "resolved");
+      $("#open-issues-list").html(rows.length ? rows.map(i => `
+        <div class="d-flex justify-content-between align-items-center border-bottom py-2">
+          <div><div class="fw-semibold small">${esc(i.title)}</div>
+          <div class="text-muted" style="font-size:.78rem">${esc(i.flat_label)} · <i class="bi bi-arrow-up-circle"></i> ${i.vote_count}</div></div>
+          ${statusPill(i.status)}
+        </div>`).join("") : `<p class="text-muted text-center py-4">No open issues</p>`);
+    });
+  }
+
+  loadStats(); loadPending(); loadIssues();
+});
+</script>
+{% endblock %}

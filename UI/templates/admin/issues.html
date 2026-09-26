@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Issues — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Issue / Complaint Management</h3>
+    <select id="status-filter" class="form-select form-select-sm" style="width:auto">
+      <option value="">All Statuses</option>
+      <option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option>
+    </select>
+  </div>
+
+  <div class="row g-3" id="issues-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
+  <div id="issues-pager"></div>
+</div>
+
+<!-- Detail + resolve modal -->
+<div class="modal fade" id="issueModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title" id="issue-modal-title">Issue</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="issue-detail"></div>
+      <div class="modal-footer flex-column align-items-stretch">
+        <form id="resolve-form" class="row g-2 w-100 align-items-end">
+          <div class="col-md-7"><label class="form-label small">Resolution Remark</label>
+            <input name="remark" class="form-control" required placeholder="What was done to fix it?"></div>
+          <div class="col-md-3"><label class="form-label small">Resolution Image</label>
+            <input name="image" type="file" accept="image/*" class="form-control form-control-sm"></div>
+          <div class="col-md-2"><button class="btn btn-success w-100" type="submit"><i class="bi bi-check2-circle me-1"></i>Resolve</button></div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS;
+  const { statusPill, formatDate, renderPager } = SMSUI;
+  let page = 1, currentId = null;
+  const prioClass = { urgent: "prio-urgent", high: "prio-high", medium: "", low: "text-muted" };
+
+  function load(p) {
+    page = p || 1;
+    const params = { page };
+    const st = $("#status-filter").val(); if (st) params.status = st;
+    Api.get("issues/", params).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#issues-list").html(rows.length ? rows.map(i => `
+        <div class="col-md-6 col-xl-4">
+          <div class="card panel-card h-100">
+            <div class="card-body d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-start">
+                <h6 class="fw-bold mb-1">${esc(i.title)}</h6>
+                ${statusPill(i.status)}
+              </div>
+              <p class="text-muted small flex-grow-1">${esc(i.description.slice(0, 120))}${i.description.length > 120 ? "…" : ""}</p>
+              <div class="d-flex justify-content-between align-items-center small text-muted">
+                <span><i class="bi bi-geo-alt"></i> ${esc(i.flat_label)}</span>
+                <span><span class="${prioClass[i.priority]}"><i class="bi bi-flag"></i> ${esc(i.priority)}</span>
+                      · <i class="bi bi-arrow-up-circle"></i> ${i.vote_count}
+                      · <i class="bi bi-chat"></i> ${i.comment_count}</span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-2 pt-2 border-top small">
+                <span class="badge text-bg-light border">${esc(i.category)}</span>
+                <span class="text-muted">${formatDate(i.created_at)}</span>
+                <button class="btn btn-sm btn-outline-primary" data-open-i="${i.id}">Manage <i class="bi bi-chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No issues found.</div>');
+      renderPager("#issues-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  function openDetail(id) {
+    currentId = id;
+    Api.get(`issues/${id}/`).done(function (res) {
+      const i = res.data;
+      $("#issue-modal-title").html(`${esc(i.title)} ${statusPill(i.status)}`);
+      $("#issue-detail").html(`
+        <p>${esc(i.description)}</p>
+        <div class="small text-muted mb-2"><i class="bi bi-geo-alt me-1"></i>${esc(i.flat_label)} ·
+          raised by @${esc(i.created_by_name || "-")} on ${formatDate(i.created_at)} ·
+          priority <b class="${prioClass[i.priority]}">${esc(i.priority)}</b></div>
+        ${i.images && i.images.length ? `<div class="mb-3">${i.images.map(im =>
+          `<a href="${im.image}" target="_blank"><img src="${im.image}" class="issue-thumb me-1"></a>`).join("")}</div>` : ""}
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Change Status</label>
+          <div class="btn-group">
+            ${["open", "in_progress", "resolved"].map(s =>
+              `<button class="btn btn-sm btn-outline-secondary ${i.status === s ? "active" : ""}" data-status="${s}">${s.replace("_", " ")}</button>`).join("")}
+          </div>
+        </div>
+        <h6 class="fw-bold small">Comments (${(i.comments || []).length})</h6>
+        <div id="issue-comments">${(i.comments || []).map(c =>
+          `<div class="border rounded p-2 mb-1 small"><b>@${esc(c.user_name)}</b>: ${esc(c.comment)}</div>`).join("") || '<p class="text-muted small">None</p>'}</div>
+        ${i.resolution ? `<div class="alert alert-success small mt-2"><b>Resolution:</b> ${esc(i.resolution.remark)}
+          <div class="text-muted">@${esc(i.resolution.resolved_by_name || "-")} · ${formatDate(i.resolution.timestamp)}</div></div>` : ""}
+      `);
+      $("#issueModal").modal("show");
+    });
+  }
+
+  $(document).on("click", "[data-open-i]", function () { openDetail($(this).data("open-i")); });
+
+  $(document).on("click", "[data-status]", function () {
+    const s = $(this).data("status");
+    Api.patch(`issues/${currentId}/status/`, { status: s }).done(function (res) {
+      toastSuccess(res.message); load(page); openDetail(currentId);
+    });
+  });
+
+  $("#resolve-form").on("submit", function (e) {
+    e.preventDefault();
+    Api.upload(`issues/${currentId}/resolve/`, new FormData(this)).done(function (res) {
+      toastSuccess(res.message); $("#issueModal").modal("hide"); load(page);
+    });
+  });
+
+  $("#status-filter").on("change", () => load(1));
+  load(1);
+});
+</script>
+{% endblock %}

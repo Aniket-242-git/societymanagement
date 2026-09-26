@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Announcements — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="bi bi-megaphone me-2"></i>Announcements</h3>
+    <button class="btn btn-success" id="btn-add-ann"><i class="bi bi-plus-lg me-1"></i>New Announcement</button>
+  </div>
+  <div class="row g-3" id="ann-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
+  <div id="ann-pager"></div>
+</div>
+
+<div class="modal fade" id="annModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="ann-modal-title">New Announcement</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="ann-form" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Title</label><input name="title" class="form-control" required maxlength="150"></div>
+          <div class="mb-3"><label class="form-label">Body</label><textarea name="body" class="form-control" rows="4" required></textarea></div>
+          <div class="row g-3">
+            <div class="col-md-5"><label class="form-label">Expiry Date</label><input name="expiry_date" type="date" class="form-control"></div>
+            <div class="col-md-4"><label class="form-label">Attachment</label><input name="attachment" type="file" class="form-control" accept=".pdf,.doc,.docx,.jpg,.png,.xlsx"></div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" name="pinned" id="pin-flag">
+              <label class="form-check-label" for="pin-flag">Pin</label></div></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Publish</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { formatDate, renderPager } = SMSUI;
+  let page = 1, editingId = null;
+
+  function load(p) {
+    page = p || 1;
+    Api.get("announcements/", { page }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#ann-list").html(rows.length ? rows.map(a => `
+        <div class="col-md-6 col-xl-4">
+          <div class="card panel-card h-100 ${a.pinned ? "border border-warning border-2" : ""}">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <h6 class="fw-bold mb-1">${a.pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : ""}${esc(a.title)}</h6>
+              </div>
+              <p class="text-muted small">${esc(a.body)}</p>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="small text-muted">${formatDate(a.created_at)} · @${esc(a.created_by_name || "-")}
+                  ${a.expiry_date ? " · expires " + formatDate(a.expiry_date) : ""}</span>
+                <span>
+                  ${a.attachment ? `<a href="${a.attachment}" target="_blank" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-paperclip"></i></a>` : ""}
+                  <button class="btn btn-sm btn-outline-primary me-1" data-edit-a="${a.id}"><i class="bi bi-pencil"></i></button>
+                  <button class="btn btn-sm btn-outline-danger" data-del-a="${a.id}"><i class="bi bi-trash"></i></button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No announcements yet.</div>');
+      renderPager("#ann-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  $("#btn-add-ann").on("click", function () {
+    editingId = null; $("#ann-form")[0].reset();
+    $("#ann-modal-title").text("New Announcement"); $("#annModal").modal("show");
+  });
+
+  $(document).on("click", "[data-edit-a]", function () {
+    const id = $(this).data("edit-a");
+    Api.get(`announcements/${id}/`).done(function (res) {
+      const a = res.data; editingId = id;
+      $("#ann-modal-title").text("Edit Announcement");
+      const f = $("#ann-form");
+      f.find('[name="title"]').val(a.title);
+      f.find('[name="body"]').val(a.body);
+      f.find('[name="expiry_date"]').val(a.expiry_date || "");
+      f.find('[name="pinned"]').prop("checked", a.pinned);
+      $("#annModal").modal("show");
+    });
+  });
+
+  $("#ann-form").on("submit", function (e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    fd.set("pinned", fd.get("pinned") ? "true" : "false");
+    if (!fd.get("expiry_date")) fd.delete("expiry_date");
+    if (!editingId) {
+      Api.upload("announcements/", fd).done(function (res) {
+        if (res.success) { toastSuccess(res.message); $("#annModal").modal("hide"); load(1); }
+      });
+    } else {
+      // JSON update (attachment edit via re-upload handled by multipart patch below)
+      fd.append("_method", "PATCH");
+      SMS.ajaxRequest({ url: `announcements/${editingId}/`, method: "PATCH", formData: fd }).done(function (res) {
+        if (res.success) { toastSuccess(res.message); $("#annModal").modal("hide"); load(page); }
+      });
+    }
+  });
+
+  $(document).on("click", "[data-del-a]", function () {
+    if (!confirm("Delete this announcement?")) return;
+    Api.del(`announcements/${$(this).data("del-a")}/`).done(function (res) { toastSuccess(res.message); load(page); });
+  });
+
+  load(1);
+});
+</script>
+{% endblock %}

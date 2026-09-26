@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Reports — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-graph-up me-2"></i>Reports Dashboard</h3>
+    <div class="d-flex gap-2 align-items-end">
+      <div><label class="form-label small mb-0">Year</label>
+        <select id="rep-year" class="form-select form-select-sm"></select></div>
+      <div><label class="form-label small mb-0">Month</label>
+        <select id="rep-month" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+          <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+          <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+          <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+        </select></div>
+      <button class="btn btn-primary btn-sm" id="btn-refresh"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4" id="rep-cards"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-pie-chart me-2"></i>Expense Breakdown by Category</span>
+          <button class="btn btn-sm btn-outline-success export-btn" data-kind="expenses"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+        </div>
+        <div class="card-body"><canvas id="expense-chart" height="220"></canvas></div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-cash-stack me-2"></i>Income vs Expense</span>
+          <button class="btn btn-sm btn-outline-success export-btn" data-kind="collections"><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+        </div>
+        <div class="card-body"><canvas id="incexp-chart" height="220"></canvas></div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+          <span><i class="bi bi-list-check me-2"></i>Flat-wise Pending Dues (month required for due list)</span>
+          <button class="btn btn-sm btn-outline-success export-btn" data-kind="dues"><i class="bi bi-file-earmark-excel me-1"></i>Export Due List</button>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height:380px;overflow:auto">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Flat</th><th>Owner</th><th>Monthly Maintenance</th><th>Period</th></tr></thead>
+              <tbody id="due-tbody"><tr><td colspan="4" class="text-center text-muted py-4">Select a month &amp; click refresh</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc } = SMS; const { INR } = SMSUI;
+  let charts = {};
+
+  const years = []; const nowY = new Date().getFullYear();
+  for (let y = nowY - 3; y <= nowY + 1; y++) years.push(y);
+  $("#rep-year").html(years.map(y => `<option ${y === nowY ? "selected" : ""} value="${y}">${y}</option>`).join(""));
+
+  function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+  function load() {
+    const year = $("#rep-year").val(), month = $("#rep-month").val();
+    const params = { year }; if (month) params.month = month;
+
+    Api.get("reports/collections/", params).done(function (res) {
+      const s = res.data.summary || {};
+      $("#rep-cards").html(`
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body">
+          <div class="text-muted small">Approved Collections</div>
+          <div class="stat-value" style="color:var(--sms-primary)">${INR(s.approved_total)}</div>
+          <div class="small text-muted">${s.approved_count} payments</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body">
+          <div class="text-muted small">Pending Approvals</div>
+          <div class="stat-value" style="color:#b07a0a">${INR(s.pending_total)}</div>
+          <div class="small text-muted">${s.pending_count} requests</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body">
+          <div class="text-muted small">Total Expenses</div>
+          <div class="stat-value" style="color:#c0392b" id="exp-total">…</div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body">
+          <div class="text-muted small">Net Balance</div>
+          <div class="stat-value" id="net-balance">…</div></div></div></div>`);
+
+      const dues = res.data.due_list || [];
+      $("#due-tbody").html(dues.length ? dues.map(d =>
+        `<tr><td>${esc(d.flat)}</td><td>${esc(d.owner)}</td><td>${INR(d.monthly_maintenance)}</td><td>${esc(d.period)}</td></tr>`).join("")
+        : `<tr><td colspan="4" class="text-center text-muted py-4">${month ? "No pending dues 🎉" : "Select a month to compute dues"}</td></tr>`);
+    });
+
+    Api.get("reports/income-expense/", params).done(function (res) {
+      const d = res.data;
+      $("#exp-total").text(INR(d.expense));
+      $("#net-balance").text(INR(d.balance)).css("color", d.balance >= 0 ? "#157347" : "#c0392b");
+
+      destroyChart("pie"); destroyChart("bar");
+      charts.pie = new Chart(document.getElementById("expense-chart"), {
+        type: "doughnut",
+        data: {
+          labels: d.by_category.map(c => c.category),
+          datasets: [{ data: d.by_category.map(c => c.total),
+            backgroundColor: ["#1e6f5c", "#f4a825", "#e76f51", "#2a9d8f", "#457b9d", "#b5838d", "#6d6875", "#94d2bd"] }],
+        },
+        options: { plugins: { legend: { position: "bottom" } } },
+      });
+      charts.bar = new Chart(document.getElementById("incexp-chart"), {
+        type: "bar",
+        data: {
+          labels: ["Income", "Expense", "Balance"],
+          datasets: [{ data: [d.income, d.expense, d.balance],
+            backgroundColor: ["#1e6f5c", "#e76f51", "#f4a825"], borderRadius: 10 }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+      });
+    });
+  }
+
+  $(".export-btn").on("click", function () {
+    const kind = $(this).data("kind");
+    const year = $("#rep-year").val(), month = $("#rep-month").val();
+    let url = `/api/v1/reports/export/${kind}/?year=${year}`;
+    if (month) url += `&month=${month}`;
+    window.location.href = url;   // browser handles xlsx download
+  });
+
+  $("#btn-refresh").on("click", load);
+  load();
+});
+</script>
+{% endblock %}

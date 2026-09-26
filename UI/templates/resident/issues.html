@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Issues{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Complaints &amp; Issues</h3>
+    <button class="btn btn-success" id="btn-raise"><i class="bi bi-plus-lg me-1"></i>Raise Issue</button>
+  </div>
+
+  <div class="row g-3" id="issues-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
+  <div id="issues-pager"></div>
+</div>
+
+<!-- Raise issue modal -->
+<div class="modal fade" id="raiseModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Raise an Issue</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="raise-form" enctype="multipart/form-data">
+        <div class="modal-body row g-3">
+          <div class="col-12"><label class="form-label">Title</label>
+            <input name="title" class="form-control" required maxlength="150"></div>
+          <div class="col-md-6"><label class="form-label">Category</label>
+            <select name="category" class="form-select">
+              <option value="plumbing">Plumbing</option><option value="electrical">Electrical</option>
+              <option value="security">Security</option><option value="housekeeping">Housekeeping</option>
+              <option value="elevator">Elevator</option><option value="parking">Parking</option>
+              <option value="water">Water Supply</option><option value="other">Other</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label">Priority</label>
+            <select name="priority" class="form-select">
+              <option value="low">Low</option><option value="medium" selected>Medium</option>
+              <option value="high">High</option><option value="urgent">Urgent</option>
+            </select></div>
+          <div class="col-12"><label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="3" required></textarea></div>
+          <div class="col-12"><label class="form-label">Photos (up to 3)</label>
+            <input name="images" type="file" accept="image/*" multiple class="form-control"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Submit Issue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal fade" id="issueModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="issue-modal-title">Issue</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="issue-detail"></div>
+      <div class="modal-footer">
+        <form id="comment-form" class="d-flex w-100 gap-2">
+          <input name="comment" class="form-control" placeholder="Add a comment…" maxlength="1000" required>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-send"></i></button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { statusPill, formatDate, renderPager } = SMSUI;
+  let page = 1, flatId = null, currentId = null;
+
+  Api.get("auth/me/").done(function (res) { flatId = res.data.flat_id; load(1); });
+
+  function load(p) {
+    page = p || 1;
+    Api.get("issues/", { page }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#issues-list").html(rows.length ? rows.map(i => `
+        <div class="col-md-6 col-xl-4">
+          <div class="card panel-card h-100">
+            <div class="card-body d-flex flex-column">
+              <div class="d-flex justify-content-between">
+                <h6 class="fw-bold">${esc(i.title)}</h6>${statusPill(i.status)}
+              </div>
+              <p class="text-muted small flex-grow-1">${esc(i.description.slice(0, 110))}${i.description.length > 110 ? "…" : ""}</p>
+              <div class="small text-muted mb-2"><span class="badge text-bg-light border me-1">${esc(i.category)}</span>
+                <i class="bi bi-flag"></i> ${esc(i.priority)} · ${formatDate(i.created_at)}</div>
+              <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+                <button class="btn btn-sm ${i.has_voted ? "btn-success" : "btn-outline-success"} vote-btn ${i.has_voted ? "voted" : ""}" data-vote="${i.id}">
+                  <i class="bi bi-arrow-up-circle"></i> ${i.vote_count}</button>
+                <span class="small text-muted"><i class="bi bi-chat"></i> ${i.comment_count}</span>
+                <button class="btn btn-sm btn-outline-primary" data-open-i="${i.id}">Open</button>
+              </div>
+            </div>
+          </div>
+        </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No issues raised. 🎉</div>');
+      renderPager("#issues-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  function openDetail(id) {
+    currentId = id;
+    Api.get(`issues/${id}/`).done(function (res) {
+      const i = res.data;
+      $("#issue-modal-title").html(`${esc(i.title)} ${statusPill(i.status)}`);
+      $("#issue-detail").html(`
+        <p>${esc(i.description)}</p>
+        <div class="small text-muted mb-2">${esc(i.flat_label)} · @${esc(i.created_by_name || "-")} · ${formatDate(i.created_at)}</div>
+        ${i.images && i.images.length ? `<div class="mb-3">${i.images.map(im =>
+          `<a href="${im.image}" target="_blank"><img src="${im.image}" class="issue-thumb me-1"></a>`).join("")}</div>` : ""}
+        ${i.resolution ? `<div class="alert alert-success small"><b><i class="bi bi-check2-circle me-1"></i>Resolved:</b> ${esc(i.resolution.remark)}
+          <div class="text-muted">@${esc(i.resolution.resolved_by_name || "-")} · ${formatDate(i.resolution.timestamp)}</div></div>` : ""}
+        <hr><h6 class="fw-bold small mb-2">Comments</h6>
+        <div id="issue-comments">${(i.comments || []).map(c =>
+          `<div class="border rounded p-2 mb-1 small"><b>@${esc(c.user_name)}</b>: ${esc(c.comment)}
+            <span class="text-muted float-end">${formatDate(c.created_at)}</span></div>`).join("") || '<p class="text-muted small">Be the first to comment.</p>'}</div>
+      `);
+      $("#issueModal").modal("show");
+    });
+  }
+
+  $("#btn-raise").on("click", function () { $("#raise-form")[0].reset(); $("#raiseModal").modal("show"); });
+
+  $("#raise-form").on("submit", function (e) {
+    e.preventDefault();
+    if (!flatId) { SMS.toastError("Your account is not mapped to a flat yet."); return; }
+    const fd = new FormData(this);
+    fd.append("flat", flatId);
+    // rename images[] field: DRF ListField accepts repeated "images" keys — already correct
+    Api.upload("issues/", fd).done(function (res) {
+      if (res.success) { toastSuccess(res.message); $("#raiseModal").modal("hide"); load(1); }
+    });
+  });
+
+  $(document).on("click", "[data-vote]", function () {
+    const id = $(this).data("vote");
+    Api.post(`issues/${id}/vote/`, {}).done(function (res) {
+      toastSuccess(res.message); load(page);
+    });
+  });
+
+  $(document).on("click", "[data-open-i]", function () { openDetail($(this).data("open-i")); });
+
+  $("#comment-form").on("submit", function (e) {
+    e.preventDefault();
+    Api.post(`issues/${currentId}/comments/`, { comment: $(this).find('[name="comment"]').val() }).done(function (res) {
+      if (res.success) { toastSuccess(res.message); openDetail(currentId); }
+    });
+  });
+
+  load(1);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Resident Dashboard{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h3 class="fw-bold mb-1">Welcome, {{ user.first_name|default:user.username }} 👋</h3>
+      {% if flat %}<p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>Your flat: <b>{{ flat }}</b> · Monthly maintenance ₹{{ flat.monthly_maintenance }}</p>{% endif %}
+    </div>
+    <span class="badge rounded-pill text-bg-success px-3 py-2">Resident Portal</span>
+  </div>
+
+  <div id="dues-banner"></div>
+
+  <div class="row g-3 mb-4" id="res-cards"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card panel-card h-100">
+        <div class="card-header py-3 d-flex justify-content-between">
+          <span><i class="bi bi-megaphone me-2"></i>Latest Announcements</span>
+          <a href="/ui/resident/announcements/" class="small">all →</a>
+        </div>
+        <div class="card-body" id="ann-list"><p class="text-muted text-center py-3">Loading…</p></div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card panel-card h-100">
+        <div class="card-header py-3 d-flex justify-content-between">
+          <span><i class="bi bi-droplet-half me-2"></i>Active Services on Your Flat</span>
+        </div>
+        <div class="card-body" id="svc-list"><p class="text-muted text-center py-3">Loading…</p></div>
+      </div>
+    </div>
+    <div class="col-12">
+      <div class="card panel-card">
+        <div class="card-header py-3 d-flex justify-content-between">
+          <span><i class="bi bi-clock-history me-2"></i>My Recent Payments</span>
+          <a href="/ui/resident/payments/" class="small">view all / pay now →</a>
+        </div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Amount</th><th>Receipt</th><th>Period</th><th>Status</th><th>Submitted</th></tr></thead>
+            <tbody id="pay-list"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc } = SMS; const { INR, statusPill, formatDate } = SMSUI;
+
+  Api.get("auth/me/").done(function (res) {
+    const me = res.data;
+    if (!me.flat_id) {
+      $("#dues-banner").html('<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Your account is not mapped to a flat yet. Please contact the society admin.</div>');
+      return;
+    }
+    window.__flatId = me.flat_id;
+    loadAll(me.flat_id);
+  });
+
+  function loadAll(flatId) {
+    Api.get("reports/dashboard/").done(function (res) {
+      const s = res.data;
+      $("#res-cards").html(`
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-blue"><i class="bi bi-wallet2"></i></div>
+          <div><div class="stat-value">${INR(s.my_approved_this_year)}</div><div class="text-muted small">Paid This Year</div></div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-amber"><i class="bi bi-hourglass-split"></i></div>
+          <div><div class="stat-value">${s.my_pending || 0}</div><div class="text-muted small">Pending Approval</div></div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-red"><i class="bi bi-exclamation-triangle"></i></div>
+          <div><div class="stat-value">${s.open_issues}</div><div class="text-muted small">Open Society Issues</div></div></div></div></div>
+        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
+          <div class="icon-wrap bg-soft-green"><i class="bi bi-cash-coin"></i></div>
+          <div><a href="/ui/resident/payments/" class="btn btn-sms btn-sm mt-1">Pay Maintenance</a></div></div></div></div>`);
+    });
+
+    Api.get("payments/", { flat: flatId, page_size: 5 }).done(function (res) {
+      const rows = (res.data && res.data.results) || res.data || [];
+      $("#pay-list").html(rows.length ? rows.map(p => `
+        <tr><td class="fw-semibold">${INR(p.amount)}</td><td class="small">${esc(p.receipt_no || "-")}</td>
+        <td class="small">${p.period_month}/${p.period_year}</td><td>${statusPill(p.status)}</td>
+        <td class="small">${formatDate(p.created_at)}</td></tr>`).join("")
+        : '<tr><td colspan="5" class="text-center text-muted py-3">No payments yet</td></tr>');
+    });
+
+    Api.get("announcements/", { page_size: 3 }).done(function (res) {
+      const rows = (res.data && res.data.results) || res.data || [];
+      $("#ann-list").html(rows.length ? rows.map(a => `
+        <div class="border-bottom pb-2 mb-2">
+          <div class="fw-semibold small">${a.pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : ""}${esc(a.title)}</div>
+          <div class="text-muted" style="font-size:.8rem">${esc(a.body.slice(0, 110))}${a.body.length > 110 ? "…" : ""} · ${formatDate(a.created_at)}</div>
+        </div>`).join("") : '<p class="text-muted text-center py-3">Nothing new 🎉</p>');
+    });
+
+    Api.get("flats/" + flatId + "/").done(function (res) {
+      const svcs = res.data.services || [];
+      $("#svc-list").html(svcs.length ? svcs.map(s => `
+        <span class="badge rounded-pill text-bg-success-subtle border mb-2 me-1 px-3 py-2" style="color:#157347!important;background:#e6f6ee!important">
+          <i class="bi bi-check-circle-fill me-1"></i>${esc(s.service_name)}</span>`).join("")
+        : '<p class="text-muted text-center py-3">No active services</p>');
+    });
+  }
+});
+</script>
+{% endblock %}

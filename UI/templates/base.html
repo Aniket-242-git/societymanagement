@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Society Management System{% endblock %}</title>
+  <!-- Bootstrap 5 -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Toastr -->
+  <link href="https://cdn.jsdelivr.net/npm/toastr@2.1.4/build/toastr.min.css" rel="stylesheet">
+  <link href="/static/css/style.css" rel="stylesheet">
+</head>
+<body class="{% block body_class %}dashboard-body{% endblock %}">
+
+{% if user.is_authenticated %}
+<nav class="navbar navbar-expand-lg sms-navbar sticky-top">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="/ui/dashboard/">
+      <i class="bi bi-buildings-fill me-2"></i>GreenValue Society
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="mainNav">
+      <ul class="navbar-nav me-auto">
+        {% if user.is_staff_role %}
+          <li class="nav-item"><a class="nav-link" href="/ui/dashboard/"><i class="bi bi-speedometer2 me-1"></i>Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/flats/"><i class="bi bi-door-open me-1"></i>Flats</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/services/"><i class="bi bi-droplet-half me-1"></i>Services</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/payments/"><i class="bi bi-cash-coin me-1"></i>Maintenance</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/expenses/"><i class="bi bi-receipt me-1"></i>Expenses</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/issues/"><i class="bi bi-exclamation-triangle me-1"></i>Issues</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/announcements/"><i class="bi bi-megaphone me-1"></i>Announcements</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/reports/"><i class="bi bi-graph-up me-1"></i>Reports</a></li>
+          {% if user.role == 'admin' or user.is_superuser %}
+          <li class="nav-item"><a class="nav-link" href="/ui/admin/users/"><i class="bi bi-people me-1"></i>Users</a></li>
+          {% endif %}
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="/ui/dashboard/"><i class="bi bi-house-heart me-1"></i>Dashboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/resident/payments/"><i class="bi bi-cash-coin me-1"></i>My Payments</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/resident/issues/"><i class="bi bi-exclamation-triangle me-1"></i>Issues</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/resident/announcements/"><i class="bi bi-megaphone me-1"></i>Announcements</a></li>
+          <li class="nav-item"><a class="nav-link" href="/ui/resident/expenses/"><i class="bi bi-eye me-1"></i>Expenses</a></li>
+        {% endif %}
+      </ul>
+      <ul class="navbar-nav">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" data-bs-toggle="dropdown" href="#">
+            <i class="bi bi-person-circle me-1"></i>{{ user.username }}
+            <span class="badge role-badge ms-1">{{ user.get_role_display }}</span>
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#changePwdModal"><i class="bi bi-key me-2"></i>Change Password</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="/ui/logout/"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+{% endif %}
+
+<main class="{% block main_class %}py-4{% endblock %}">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- Global loader -->
+<div id="global-loader" class="global-loader d-none">
+  <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+</div>
+
+<!-- Change password modal (shared) -->
+<div class="modal fade" id="changePwdModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-key me-2"></i>Change Password</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="change-pwd-form">
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Current Password</label>
+            <input type="password" class="form-control" name="old_password" required></div>
+          <div class="mb-3"><label class="form-label">New Password (min 8 chars)</label>
+            <input type="password" class="form-control" name="new_password" minlength="8" required></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Update</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<footer class="sms-footer text-center py-3 mt-5">
+  <small>© 2026 GreenValue Society Management · API docs at <a href="/api/docs/">/api/docs/</a></small>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/toastr@2.1.4/build/toastr.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="/static/js/ajax.js"></script>
+<script src="/static/js/app.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

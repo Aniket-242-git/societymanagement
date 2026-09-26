@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}Payments — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-cash-coin me-2"></i>Maintenance Fee Approvals</h3>
+    <select id="status-filter" class="form-select form-select-sm" style="width:auto">
+      <option value="">All Statuses</option>
+      <option value="pending" selected>Pending</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+    </select>
+  </div>
+
+  <div class="card panel-card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr>
+            <th>Flat</th><th>Amount</th><th>Receipt</th><th>Mode</th><th>Period</th>
+            <th>Proof</th><th>Status</th><th>Submitted</th><th class="text-end">Actions</th>
+          </tr></thead>
+          <tbody id="payments-tbody"><tr><td colspan="9" class="text-center text-muted py-5">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white" id="payments-pager"></div>
+  </div>
+</div>
+
+<!-- Reject modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Reject Payment #<span id="reject-id"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="reject-form">
+        <div class="modal-body">
+          <label class="form-label">Reason (stored in audit log)</label>
+          <textarea name="reason" class="form-control" rows="3" required></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-danger" type="submit">Reject Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal fade" id="editPayModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Edit Payment #<span id="edit-pay-id"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="edit-pay-form">
+        <div class="modal-body row g-3">
+          <div class="col-md-6"><label class="form-label">Amount</label>
+            <input name="amount" type="number" step="0.01" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Receipt No</label>
+            <input name="receipt_no" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Mode</label>
+            <select name="mode" class="form-select">
+              <option value="cash">Cash</option><option value="upi">UPI</option><option value="cheque">Cheque</option>
+              <option value="netbanking">Net Banking</option><option value="card">Card</option><option value="other">Other</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              <option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+            </select></div>
+          <div class="col-12"><label class="form-label">Audit Remark (why edited)</label>
+            <input name="audit_remark" class="form-control" required placeholder="e.g. amount corrected as per bank statement"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save &amp; Log</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Audit trail modal -->
+<div class="modal fade" id="auditModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Payment Audit Trail #<span id="audit-pay-id"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="audit-list"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS;
+  const { INR, statusPill, formatDate, renderPager } = SMSUI;
+  let page = 1, rejectId = null, editId = null;
+
+  function load(p) {
+    page = p || 1;
+    const params = { page };
+    const st = $("#status-filter").val(); if (st) params.status = st;
+    Api.get("payments/", params).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#payments-tbody").html(rows.length ? rows.map(x => `
+        <tr>
+          <td class="fw-semibold">${esc(x.flat_label)}<div class="text-muted small">@${esc(x.submitted_by_name || "-")}</div></td>
+          <td>${INR(x.amount)}</td><td class="small">${esc(x.receipt_no || "-")}</td>
+          <td>${esc(x.mode_display)}</td><td class="small">${x.period_month}/${x.period_year}</td>
+          <td>${x.proof_image ? `<a href="${x.proof_image}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i></a>` : "-"}</td>
+          <td>${statusPill(x.status)}${x.rejection_reason ? `<div class="text-danger small mt-1">${esc(x.rejection_reason)}</div>` : ""}</td>
+          <td class="small">${formatDate(x.created_at)}</td>
+          <td class="text-end text-nowrap">
+            ${x.status === "pending" ? `
+              <button class="btn btn-sm btn-success me-1" data-approve="${x.id}"><i class="bi bi-check-lg"></i></button>
+              <button class="btn btn-sm btn-danger me-1" data-reject="${x.id}"><i class="bi bi-x-lg"></i></button>` : ""}
+            <button class="btn btn-sm btn-outline-primary me-1" data-editp="${x.id}" title="Edit"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-secondary me-1" data-audit="${x.id}" title="Audit trail"><i class="bi bi-clock-history"></i></button>
+            <button class="btn btn-sm btn-outline-danger" data-delp="${x.id}" title="Soft delete"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="9" class="text-center text-muted py-5">No payments found</td></tr>`);
+      renderPager("#payments-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  $(document).on("click", "[data-approve]", function () {
+    const id = $(this).data("approve");
+    if (!confirm("Approve payment #" + id + "? It will reflect in official collections.")) return;
+    Api.post(`payments/${id}/approve/`, { remark: "Approved from admin panel" }).done(function (res) {
+      toastSuccess(res.message); load(page);
+    });
+  });
+
+  $(document).on("click", "[data-reject]", function () {
+    rejectId = $(this).data("reject");
+    $("#reject-id").text(rejectId); $("#reject-form")[0].reset();
+    $("#rejectModal").modal("show");
+  });
+
+  $("#reject-form").on("submit", function (e) {
+    e.preventDefault();
+    Api.post(`payments/${rejectId}/reject/`, { reason: $(this).find('[name="reason"]').val() }).done(function (res) {
+      toastSuccess(res.message); $("#rejectModal").modal("hide"); load(page);
+    });
+  });
+
+  $(document).on("click", "[data-editp]", function () {
+    editId = $(this).data("editp");
+    Api.get(`payments/${editId}/`).done(function (res) {
+      const x = res.data;
+      $("#edit-pay-id").text(editId);
+      const f = $("#edit-pay-form");
+      f.find('[name="amount"]').val(x.amount);
+      f.find('[name="receipt_no"]').val(x.receipt_no);
+      f.find('[name="mode"]').val(x.mode);
+      f.find('[name="status"]').val(x.status);
+      f.find('[name="audit_remark"]').val("");
+      $("#editPayModal").modal("show");
+    });
+  });
+
+  $("#edit-pay-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = {
+      amount: parseFloat($(this).find('[name="amount"]').val()),
+      receipt_no: $(this).find('[name="receipt_no"]').val(),
+      mode: $(this).find('[name="mode"]').val(),
+      status: $(this).find('[name="status"]').val(),
+      audit_remark: $(this).find('[name="audit_remark"]').val(),
+    };
+    Api.patch(`payments/${editId}/`, data).done(function (res) {
+      toastSuccess(res.message); $("#editPayModal").modal("hide"); load(page);
+    });
+  });
+
+  $(document).on("click", "[data-audit]", function () {
+    const id = $(this).data("audit");
+    $("#audit-pay-id").text(id); $("#audit-list").html('<p class="text-muted">Loading…</p>');
+    Api.get(`payments/${id}/audit_logs/`).done(function (res) {
+      $("#audit-list").html((res.data || []).map(a => `
+        <div class="border rounded p-3 mb-2">
+          <div class="d-flex justify-content-between">
+            <strong class="text-capitalize"><i class="bi bi-arrow-repeat me-1"></i>${esc(a.action)}</strong>
+            <span class="text-muted small">${formatDate(a.timestamp)} · by ${esc(a.admin_name || "-")}</span>
+          </div>
+          <div class="small mt-2"><b>Old:</b> <code>${esc(JSON.stringify(a.old_value))}</code></div>
+          <div class="small"><b>New:</b> <code>${esc(JSON.stringify(a.new_value))}</code></div>
+          <div class="small text-muted mt-1">Remark: ${esc(a.remark || "-")}</div>
+        </div>`).join("") || '<p class="text-muted">No logs.</p>');
+      $("#auditModal").modal("show");
+    });
+  });
+
+  $(document).on("click", "[data-delp]", function () {
+    const id = $(this).data("delp");
+    const remark = prompt("Delete reason (logged in audit trail):");
+    if (remark === null) return;
+    Api.ajaxDel = Api.del;
+    SMS.ajaxRequest({ url: `payments/${id}/`, method: "DELETE", data: { remark } }).done(function (res) {
+      toastSuccess(res.message); load(page);
+    });
+  });
+
+  $("#status-filter").on("change", () => load(1));
+  load(1);
+});
+</script>
+{% endblock %}
