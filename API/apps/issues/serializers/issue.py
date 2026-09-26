@@ -30,7 +30,7 @@ class IssueCommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = IssueComment
         fields = ["id", "issue", "user", "user_name", "comment", "created_at"]
-        read_only_fields = ["user", "created_at"]
+        read_only_fields = ["issue", "user", "created_at"]
 
 
 class IssueResolutionSerializer(serializers.ModelSerializer):
