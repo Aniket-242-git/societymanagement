@@ -54,7 +54,7 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
         per-flat history endpoints do their own ownership checks inside
         (_check_flat_access). All write actions stay admin/committee only."""
         if self.action in (
-            "list", "retrieve", "maintenance_history", "service_history",
+            "list", "retrieve", "history", "maintenance_history", "service_history",
             "owner_history", "tenants",
         ):
             return [IsAuthenticated()]
@@ -223,6 +223,42 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
             return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save(added_by=request.user, flat=flat)
         return api_success("Tenant added successfully", data=ser.data, status=201)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        """FLAT HISTORY (combined) — powers the History modal on BOTH the admin
+        Flats page and the Resident dashboard in one round-trip.
+
+        Returns maintenance-fee history, tenant history, owner-change history
+        and service enable/disable audit trail for this flat — since it was
+        first assigned. Residents can only open it for their own flats
+        (_check_flat_access); admins/committee see every flat.
+        """
+        flat, err = self._check_flat_access(request, pk)
+        if err:
+            return err
+
+        from API.apps.payments.models import MaintenancePayment
+        from API.apps.payments.serializers import PaymentListSerializer
+
+        payments = (MaintenancePayment.objects
+                    .filter(flat=flat, is_deleted=False)
+                    .select_related("submitted_by", "approved_by")
+                    .order_by("-created_at")[:100])
+        tenants = (Tenant.objects.filter(flat=flat)
+                   .select_related("added_by").order_by("-move_in_date", "-created_at")[:100])
+        owners = (OwnerChangeHistory.objects.filter(flat=flat)
+                  .select_related("changed_by").order_by("-changed_at")[:100])
+        services = (FlatServiceAuditLog.objects.filter(flat=flat)
+                    .select_related("service", "changed_by").order_by("-timestamp")[:100])
+
+        return api_success(data={
+            "flat": FlatListSerializer(flat).data,
+            "maintenance": PaymentListSerializer(payments, many=True).data,
+            "tenants": TenantSerializer(tenants, many=True).data,
+            "owner_changes": OwnerChangeHistorySerializer(owners, many=True).data,
+            "services": FlatServiceAuditLogSerializer(services, many=True).data,
+        })
 
     @action(detail=False, methods=["get", "post"], permission_classes=[IsAuthenticated])
     def owner_history(self, request):
