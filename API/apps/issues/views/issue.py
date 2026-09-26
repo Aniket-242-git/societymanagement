@@ -7,6 +7,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdminOrCommittee
 from API.apps.core.exceptions import first_error_message
+from API.apps.core.pagination import StandardPagination
 from API.apps.core.responses import api_error, api_success
 from API.apps.issues.models import Issue, IssueComment, IssueResolution, IssueVote
 from API.apps.issues.serializers import (
@@ -20,6 +21,7 @@ class IssueViewSet(viewsets.ModelViewSet):
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = StandardPagination
 
     def get_queryset(self):
         qs = (
@@ -62,19 +64,24 @@ class IssueViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(ser(page, many=True).data)
         return api_success(data=ser(self.get_queryset(), many=True).data)
 
+    def create(self, request, *args, **kwargs):
+        # CreateSerializer has no read-only count fields; use it for validation.
+        ser = IssueCreateSerializer(data=request.data, context={"request": request})
+        if not ser.is_valid():
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
+        issue = ser.save()
+        return api_success(
+            "Issue raised successfully",
+            data=IssueDetailSerializer(issue, context={"request": request}).data,
+            status=201,
+        )
+
     def retrieve(self, request, pk=None, *args, **kwargs):
         try:
             obj = self.get_queryset().get(pk=pk)
         except Issue.DoesNotExist:
             return api_error("Issue not found", status=404)
         return api_success(data=IssueDetailSerializer(obj, context={"request": request}).data)
-
-    def create(self, request, *args, **kwargs):
-        ser = IssueCreateSerializer(data=request.data, context={"request": request})
-        if not ser.is_valid():
-            return api_error(first_error_message(ser.errors), errors=ser.errors)
-        ser.save()
-        return api_success("Issue raised successfully", data=IssueDetailSerializer(ser.instance, context={"request": request}).data, status=201)
 
     def destroy(self, request, pk=None, *args, **kwargs):
         try:
