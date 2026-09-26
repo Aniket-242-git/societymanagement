@@ -26,7 +26,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             Issue.objects.filter(is_active=True)
             .select_related("flat", "created_by", "resolution", "resolution__resolved_by")
             .prefetch_related("images", "comments__user", "votes")
-            .annotate(vote_count=Count("votes", distinct=True), comment_count=Count("comments", distinct=True))
+            .annotate(_vote_count=Count("votes", distinct=True), _comment_count=Count("comments", distinct=True))
         )
         user = self.request.user
         # residents only see society-wide issues; scoping by ?mine=true filters their own

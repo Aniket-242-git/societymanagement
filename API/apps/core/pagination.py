@@ -4,6 +4,51 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 
 
+class EnvelopePaginationMixin:
+    """Adds paginate_queryset / get_paginated_response to plain DRF ViewSets.
+
+    `rest_framework.viewsets.ViewSet` does NOT include ListModelMixin, so
+    self.paginate_queryset() does not exist there — this mixin provides the
+    standard paginator API (using the view's `pagination_class`) so both
+    ModelViewSet and plain ViewSet list actions can share the same code path.
+    """
+
+    def _paginator(self):
+        page_size = getattr(self, "page_size", None)
+        klass = self.pagination_class or type(
+            "_TmpPaginator", (StandardPagination,), {"page_size": page_size}
+        )
+        return klass()
+
+    def paginate_queryset(self, queryset, request=None, view=None):
+        from rest_framework.request import Request
+
+        if request is None:
+            request = getattr(self, "request", None)
+            if request is not None and not isinstance(request, Request):
+                request = None
+        if request is None:
+            return None
+        paginator = self._paginator()
+        from rest_framework.exceptions import NotFound
+
+        try:
+            page = paginator.paginate_queryset(queryset, request, view=self)
+        except NotFound:
+            # out-of-range ?page=N -> let DRF return the standard 404 envelope
+            raise
+        except Exception:
+            # any other pagination issue -> fall back to unpaginated list
+            return None
+        # stash so get_paginated_response can reuse the exact same paginator
+        self._instance_paginator = paginator
+        return page
+
+    def get_paginated_response(self, data):
+        paginator = getattr(self, "_instance_paginator", None) or self._paginator()
+        return paginator.get_paginated_response(data)
+
+
 def build_search_q(term, fields):
     """OR-combined icontains Q over dotted field paths. None if no term."""
     if not term:
