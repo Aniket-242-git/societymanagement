@@ -1,1 +1,31 @@
-(empty)
+
+# Compiled files
+__pycache__/
+*.pyc
+
+# Database
+db.sqlite3
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables and local secrets
+.env
+.env.*
+!.env.example
+
+# Django-generated files
+/staticfiles/
+/media/
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
