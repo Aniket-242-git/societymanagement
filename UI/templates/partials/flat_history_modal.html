@@ -1,12 +1,4 @@
-{# =====================================================================
-   FLAT HISTORY — shared modal used by BOTH sides:
-     • admin/flats.html        → clock-history button on every flat row
-     • resident/dashboard.html → "View Flat History" button per owned flat
-   Opening:  SMSFlatHistory.open(flatId, "A-101")
-   Data:     GET /api/v1/flats/{id}/history/  (one round-trip)
-   Tabs:     Maintenance fee · Tenants · Owner changes · Services
-   Residents are restricted server-side to their own flats; admins see all.
-   ===================================================================== #}
+
 <div class="modal fade" id="flatHistoryModal" tabindex="-1">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content rounded-4">

@@ -40,7 +40,7 @@
     if (redirectingToLogin) return;
     redirectingToLogin = true;
     Auth.clear();
-    window.location.href = "/ui/login/?next=" + encodeURIComponent(window.location.pathname);
+    window.location.href = "/login/?next=" + encodeURIComponent(window.location.pathname);
   }
   function logoutSession() {
     forceLogin();
@@ -118,7 +118,7 @@
         if (xhr.status === 401) {
           // try refresh once, else force login
           Auth.clear();
-          window.location.href = "/ui/login/?next=" + encodeURIComponent(window.location.pathname);
+          window.location.href = "/login/?next=" + encodeURIComponent(window.location.pathname);
           dfd.reject(xhr);
           return;
         }

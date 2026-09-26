@@ -3,10 +3,30 @@
 {% block content %}
 <div class="container">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-    <div>
-      <h3 class="fw-bold mb-1">Welcome, {{ user.first_name|default:user.username }} 👋</h3>
-      {% if flat %}<p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>Your flat: <b>{{ flat }}</b> · Monthly maintenance ₹{{ flat.monthly_maintenance }}</p>{% endif %}
+   <div>
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <h3 class="fw-bold mb-0">
+      Welcome, {{ user.first_name|default:user.username }} 👋
+    </h3>
+  </div>
+
+  {% if flat %}
+    <div class="d-flex flex-wrap align-items-center gap-2 text-muted small">
+      <span>
+        <i class="bi bi-house-door me-1 text-success"></i>
+        Flat <strong class="text-dark">{{ flat }}</strong>
+      </span>
+
+      <span class="text-secondary">•</span>
+
+      <span>
+        <i class="bi bi-cash-coin me-1 text-success"></i>
+        Monthly Maintenance
+        <strong class="text-dark">₹{{ flat.monthly_maintenance }}</strong>
+      </span>
     </div>
+  {% endif %}
+</div>
     {# FLAT HISTORY (resident side): opens the shared modal for every flat mapped to this user — history since it was first assigned #}
     <div class="d-flex flex-wrap gap-2 align-items-center">
       {% for f in flats %}
@@ -19,6 +39,7 @@
   </div>
 
   <div id="dues-banner"></div>
+ {% include "partials/flat_history_modal.html" %}
 
   <div class="row g-3 mb-4" id="res-cards"></div>
 
@@ -27,7 +48,9 @@
       <div class="card panel-card h-100">
         <div class="card-header py-3 d-flex justify-content-between">
           <span><i class="bi bi-megaphone me-2"></i>Latest Announcements</span>
-          <a href="/ui/resident/announcements/" class="small">all →</a>
+          <a href="/resident/announcements/" class="btn btn-sm btn-outline-success">
+            View all →
+        </a>
         </div>
         <div class="card-body" id="ann-list"><p class="text-muted text-center py-3">Loading…</p></div>
       </div>
@@ -44,7 +67,9 @@
       <div class="card panel-card">
         <div class="card-header py-3 d-flex justify-content-between">
           <span><i class="bi bi-clock-history me-2"></i>My Recent Payments</span>
-          <a href="/ui/resident/payments/" class="small">view all / pay now →</a>
+        <a href="/resident/payments/" class="btn btn-sm btn-outline-success">
+            View all
+        </a>
         </div>
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
@@ -56,10 +81,9 @@
     </div>
   </div>
 </div>
+
 {% endblock %}
 
-{# FLAT HISTORY: same shared modal + controller the admin Flats page uses #}
-{% include "partials/flat_history_modal.html" %}
 
 {% block extra_js %}
 <script>
@@ -82,23 +106,92 @@ $(function () {
     loadAll(me.flat_id);
   });
 
-  function loadAll(flatId) {
-    Api.get("reports/dashboard/").done(function (res) {
-      const s = res.data;
-      $("#res-cards").html(`
-        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
-          <div class="icon-wrap bg-soft-blue"><i class="bi bi-wallet2"></i></div>
-          <div><div class="stat-value">${INR(s.my_approved_this_year)}</div><div class="text-muted small">Paid This Year</div></div></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
-          <div class="icon-wrap bg-soft-amber"><i class="bi bi-hourglass-split"></i></div>
-          <div><div class="stat-value">${s.my_pending || 0}</div><div class="text-muted small">Pending Approval</div></div></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
-          <div class="icon-wrap bg-soft-red"><i class="bi bi-exclamation-triangle"></i></div>
-          <div><div class="stat-value">${s.open_issues}</div><div class="text-muted small">Open Society Issues</div></div></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card stat-card"><div class="card-body d-flex align-items-center gap-3">
-          <div class="icon-wrap bg-soft-green"><i class="bi bi-cash-coin"></i></div>
-          <div><a href="/ui/resident/payments/" class="btn btn-sms btn-sm mt-1">Pay Maintenance</a></div></div></div></div>`);
-    });
+function loadAll(flatId) {
+  Api.get("reports/dashboard/").done(function (res) {
+    const s = res.data;
+
+    $("#res-cards").html(`
+      <!-- 1. Paid This Year -->
+      <div class="col-6 col-md-3 col-xl-2-4">
+        <div class="card stat-card h-100">
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="icon-wrap bg-soft-blue">
+              <i class="bi bi-wallet2"></i>
+            </div>
+            <div>
+              <div class="stat-value">${INR(s.my_approved_this_year)}</div>
+              <div class="text-muted small">Paid This Year</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Pending Approval -->
+      <div class="col-6 col-md-3 col-xl-2-4">
+        <div
+          class="card stat-card h-100"
+          role="button"
+          style="cursor:pointer"
+          onclick="window.location.href='/resident/payments/'">
+
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="icon-wrap bg-soft-amber">
+              <i class="bi bi-hourglass-split"></i>
+            </div>
+            <div>
+              <div class="stat-value">${s.my_pending || 0}</div>
+              <div class="text-muted small">Pending Approval</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+     
+      <!-- 4. Open Issues -->
+      <div class="col-6 col-md-3 col-xl-2-4">
+        <div
+          class="card stat-card h-100"
+          role="button"
+          style="cursor:pointer"
+          onclick="window.location.href='/resident/issues/'">
+
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="icon-wrap bg-soft-red">
+              <i class="bi bi-exclamation-triangle"></i>
+            </div>
+            <div>
+              <div class="stat-value">${s.open_issues}</div>
+              <div class="text-muted small">Open Society Issues</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 5. Pay Maintenance -->
+      <div class="col-6 col-md-3 col-xl-2-4">
+        <div
+          class="card stat-card h-100"
+          role="button"
+          style="cursor:pointer"
+          onclick="window.location.href='/resident/payments/'">
+
+          <div class="card-body d-flex align-items-center gap-3">
+            <div class="icon-wrap bg-soft-green">
+              <i class="bi bi-cash-coin"></i>
+            </div>
+            <div>
+              <div class="text-muted small">Maintenance</div>
+              <div class="fw-semibold">Pay Maintenance</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    `);
+  });
+
 
     Api.get("payments/", { flat: flatId, page_size: 5 }).done(function (res) {
       const rows = (res.data && res.data.results) || res.data || [];

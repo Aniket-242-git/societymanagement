@@ -199,7 +199,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MAX_UPLOAD_SIZE = env_int("MAX_UPLOAD_SIZE_MB", 5) * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
-LOGIN_URL = "/ui/login/"
+LOGIN_URL = "/login/"
 
 # ---------------------------------------------------------------- proxy / ssl (shared hosting)
 if env("BEHIND_PROXY", "0") == "1":

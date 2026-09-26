@@ -19,7 +19,7 @@
       <div class="card panel-card h-100">
         <div class="card-header d-flex justify-content-between align-items-center py-3">
           <span><i class="bi bi-cash-stack me-2"></i>Pending Maintenance Approvals</span>
-          <a href="/ui/admin/payments/" class="small">view all →</a>
+          <a href="/admin/payments/" class="small">view all →</a>
         </div>
         <div class="card-body p-0">
           <div class="table-responsive">
@@ -96,7 +96,7 @@ $(function () {
       $("#pending-payments").html(rows.length ? rows.map(p => `
         <tr><td>${esc(p.flat_label)}</td><td class="fw-semibold">${INR(p.amount)}</td>
         <td>${esc(p.mode_display)}</td><td>${formatDate(p.created_at)}</td>
-        <td><a href="/ui/admin/payments/" class="btn btn-sm btn-outline-success">Review</a></td></tr>`).join("")
+        <td><a href="/admin/payments/" class="btn btn-sm btn-outline-success">Review</a></td></tr>`).join("")
         : `<tr><td colspan="5" class="text-center text-muted py-4">No pending payments 🎉</td></tr>`);
     });
   }
