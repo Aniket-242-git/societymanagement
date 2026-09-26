@@ -6,12 +6,16 @@
     <div>
       <h3 class="fw-bold mb-1"><i class="bi bi-eye me-2"></i>Expense Transparency</h3>
     </div>
-    <select id="cat-filter" class="form-select form-select-sm" style="width:auto">
-      <option value="">All Categories</option><option value="maintenance">Maintenance</option>
-      <option value="security">Security</option><option value="housekeeping">Housekeeping</option>
-      <option value="utilities">Utilities</option><option value="repairs">Repairs</option>
-      <option value="events">Events</option><option value="salaries">Salaries</option><option value="other">Other</option>
-    </select>
+    <div class="d-flex gap-2 flex-wrap">
+      <select id="cat-filter" class="form-select form-select-sm" style="width:auto">
+        <option value="">All Categories</option><option value="maintenance">Maintenance</option>
+        <option value="security">Security</option><option value="housekeeping">Housekeeping</option>
+        <option value="utilities">Utilities</option><option value="repairs">Repairs</option>
+        <option value="events">Events</option><option value="salaries">Salaries</option><option value="other">Other</option>
+      </select>
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+    </div>
   </div>
 
   <div class="row g-3 mb-4">
@@ -41,11 +45,14 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc } = SMS; const { INR, formatDate, renderPager } = SMSUI;
+  const { Api, esc } = SMS; const { INR, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1;
+
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
+
   function load(p) {
     page = p || 1;
-    const params = { page };
+    const params = monthParams({ page });
     const cat = $("#cat-filter").val(); if (cat) params.category = cat;
     Api.get("expenses/", params).done(function (res) {
       const d = res.data || {};
@@ -60,10 +67,10 @@ $(function () {
         <td class="small">${formatDate(x.expense_date)}</td>
         <td>${x.receipt_image ? `<a href="${x.receipt_image}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i></a>` : "-"}</td></tr>`).join("")
         : '<tr><td colspan="6" class="text-center text-muted py-5">No expenses recorded</td></tr>');
-      renderPager("#exp-pager", d.count || rows.length, page, 20, load);
+      renderPager("#exp-pager", d.count || rows.length, page, d.page_size || 20, load);
     });
   }
-  $("#cat-filter").on("change", () => load(1));
+  $("#cat-filter, #month-filter, #year-filter").on("change", () => load(1));
   load(1);
 });
 </script>

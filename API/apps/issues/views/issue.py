@@ -7,7 +7,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdminOrCommittee
 from API.apps.core.exceptions import first_error_message
-from API.apps.core.pagination import StandardPagination
+from API.apps.core.pagination import StandardPagination, parse_month_filter
 from API.apps.core.responses import api_error, api_success
 from API.apps.issues.models import Issue, IssueComment, IssueResolution, IssueVote
 from API.apps.issues.serializers import (
@@ -48,6 +48,11 @@ class IssueViewSet(viewsets.ModelViewSet):
                 Q(title__icontains=search) | Q(description__icontains=search)
                 | Q(created_by__username__icontains=search)
             )
+        year, month = parse_month_filter(self.request)
+        if year:
+            qs = qs.filter(created_at__year=year)
+        if month:
+            qs = qs.filter(created_at__month=month)
         return qs.order_by("-created_at")
 
     def get_serializer_class(self):

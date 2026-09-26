@@ -4,12 +4,16 @@
 <div class="container-fluid px-lg-4">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h3 class="fw-bold mb-0"><i class="bi bi-cash-coin me-2"></i>Maintenance Fee Approvals</h3>
-    <select id="status-filter" class="form-select form-select-sm" style="width:auto">
-      <option value="">All Statuses</option>
-      <option value="pending" selected>Pending</option>
-      <option value="approved">Approved</option>
-      <option value="rejected">Rejected</option>
-    </select>
+    <div class="d-flex gap-2 flex-wrap">
+      <select id="status-filter" class="form-select form-select-sm" style="width:auto">
+        <option value="">All Statuses</option>
+        <option value="pending" selected>Pending</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+    </div>
   </div>
 
   <div class="card panel-card">
@@ -97,12 +101,14 @@
 <script>
 $(function () {
   const { Api, esc, toastSuccess } = SMS;
-  const { INR, statusPill, formatDate, renderPager } = SMSUI;
+  const { INR, statusPill, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, rejectId = null, editId = null;
+
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
 
   function load(p) {
     page = p || 1;
-    const params = { page };
+    const params = monthParams({ page });
     const st = $("#status-filter").val(); if (st) params.status = st;
     Api.get("payments/", params).done(function (res) {
       const d = res.data || {};
@@ -125,7 +131,7 @@ $(function () {
           </td>
         </tr>`).join("")
         : `<tr><td colspan="9" class="text-center text-muted py-5">No payments found</td></tr>`);
-      renderPager("#payments-pager", d.count || rows.length, page, 20, load);
+      renderPager("#payments-pager", d.count || rows.length, page, d.page_size || 20, load);
     });
   }
 
@@ -208,6 +214,7 @@ $(function () {
   });
 
   $("#status-filter").on("change", () => load(1));
+  $("#month-filter, #year-filter").on("change", () => load(1));
   load(1);
 });
 </script>

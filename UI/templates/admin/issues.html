@@ -8,6 +8,8 @@
       <option value="">All Statuses</option>
       <option value="open">Open</option><option value="in_progress">In Progress</option><option value="resolved">Resolved</option>
     </select>
+    <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+    <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
   </div>
 
   <div class="row g-3" id="issues-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
@@ -41,13 +43,15 @@
 <script>
 $(function () {
   const { Api, esc, toastSuccess } = SMS;
-  const { statusPill, formatDate, renderPager } = SMSUI;
+  const { statusPill, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, currentId = null;
   const prioClass = { urgent: "prio-urgent", high: "prio-high", medium: "", low: "text-muted" };
 
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
+
   function load(p) {
     page = p || 1;
-    const params = { page };
+    const params = monthParams({ page });
     const st = $("#status-filter").val(); if (st) params.status = st;
     Api.get("issues/", params).done(function (res) {
       const d = res.data || {};
@@ -75,7 +79,7 @@ $(function () {
             </div>
           </div>
         </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No issues found.</div>');
-      renderPager("#issues-pager", d.count || rows.length, page, 20, load);
+      renderPager("#issues-pager", d.count || rows.length, page, d.page_size || 20, load);
     });
   }
 
@@ -125,6 +129,7 @@ $(function () {
   });
 
   $("#status-filter").on("change", () => load(1));
+  $("#month-filter, #year-filter").on("change", () => load(1));
   load(1);
 });
 </script>

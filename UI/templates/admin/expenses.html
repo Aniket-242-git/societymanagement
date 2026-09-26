@@ -12,6 +12,8 @@
         <option value="repairs">Repairs</option><option value="events">Events</option>
         <option value="salaries">Salaries</option><option value="other">Other</option>
       </select>
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
       <button class="btn btn-success" id="btn-add-expense"><i class="bi bi-plus-lg me-1"></i>Log Expense</button>
     </div>
   </div>
@@ -66,12 +68,14 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc, toastSuccess } = SMS; const { INR, formatDate, renderPager } = SMSUI;
+  const { Api, esc, toastSuccess } = SMS; const { INR, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, editingId = null;
+
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
 
   function load(p) {
     page = p || 1;
-    const params = { page };
+    const params = monthParams({ page });
     const cat = $("#cat-filter").val(); if (cat) params.category = cat;
     Api.get("expenses/", params).done(function (res) {
       const d = res.data || {};
@@ -91,7 +95,7 @@ $(function () {
           </td>
         </tr>`).join("")
         : `<tr><td colspan="8" class="text-center text-muted py-5">No expenses logged</td></tr>`);
-      renderPager("#expenses-pager", d.count || rows.length, page, 20, load);
+      renderPager("#expenses-pager", d.count || rows.length, page, d.page_size || 20, load);
     });
   }
 
@@ -137,7 +141,7 @@ $(function () {
     Api.del(`expenses/${$(this).data("del-e")}/`).done(function (res) { toastSuccess(res.message); load(page); });
   });
 
-  $("#cat-filter").on("change", () => load(1));
+  $("#cat-filter, #month-filter, #year-filter").on("change", () => load(1));
   load(1);
 });
 </script>

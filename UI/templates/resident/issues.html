@@ -4,7 +4,11 @@
 <div class="container">
   <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
     <h3 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Complaints &amp; Issues</h3>
-    <button class="btn btn-success" id="btn-raise"><i class="bi bi-plus-lg me-1"></i>Raise Issue</button>
+    <div class="d-flex gap-2 flex-wrap">
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <button class="btn btn-success" id="btn-raise"><i class="bi bi-plus-lg me-1"></i>Raise Issue</button>
+    </div>
   </div>
 
   <div class="row g-3" id="issues-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
@@ -68,14 +72,16 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc, toastSuccess } = SMS; const { statusPill, formatDate, renderPager } = SMSUI;
+  const { Api, esc, toastSuccess } = SMS; const { statusPill, formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, flatId = null, currentId = null;
+
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
 
   Api.get("auth/me/").done(function (res) { flatId = res.data.flat_id; load(1); });
 
   function load(p) {
     page = p || 1;
-    Api.get("issues/", { page }).done(function (res) {
+    Api.get("issues/", monthParams({ page })).done(function (res) {
       const d = res.data || {};
       const rows = d.results || d || [];
       $("#issues-list").html(rows.length ? rows.map(i => `
@@ -97,7 +103,7 @@ $(function () {
             </div>
           </div>
         </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No issues raised. 🎉</div>');
-      renderPager("#issues-pager", d.count || rows.length, page, 20, load);
+      renderPager("#issues-pager", d.count || rows.length, page, d.page_size || 20, load);
     });
   }
 
@@ -143,6 +149,8 @@ $(function () {
   });
 
   $(document).on("click", "[data-open-i]", function () { openDetail($(this).data("open-i")); });
+
+  $("#month-filter, #year-filter").on("change", () => load(1));
 
   $("#comment-form").on("submit", function (e) {
     e.preventDefault();
