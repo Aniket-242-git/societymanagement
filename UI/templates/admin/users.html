@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Users — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-people me-2"></i>User Management</h3>
+    <button class="btn btn-success" id="btn-add-user"><i class="bi bi-person-plus me-1"></i>Create User</button>
+  </div>
+
+  <div class="card panel-card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Username</th><th>Name</th><th>Phone</th><th>Role</th><th>Flat</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+          <tbody id="users-tbody"><tr><td colspan="7" class="text-center text-muted py-5">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white" id="users-pager"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="userModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title">Create Login Credentials</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="user-form">
+        <div class="modal-body row g-3">
+          <div class="col-md-6"><label class="form-label">Username</label><input name="username" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Full Name</label><input name="first_name" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Email</label><input name="email" type="email" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Phone</label><input name="phone" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Role</label>
+            <select name="role" class="form-select">
+              <option value="resident">Resident</option><option value="committee">Committee</option><option value="admin">Admin</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label">Password (min 8)</label>
+            <input name="password" type="password" class="form-control" minlength="8" required></div>
+          <div class="col-12"><div class="alert alert-info py-2 small mb-0">
+            <i class="bi bi-info-circle me-1"></i>User will be forced to reset this password on first login.
+            Map the flat afterwards from <a href="/ui/admin/flats/">Flats</a>.</div></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Create User</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { renderPager } = SMSUI;
+  let page = 1;
+  const roleBadge = { admin: "text-bg-danger", committee: "text-bg-warning", resident: "text-bg-success" };
+
+  function load(p) {
+    page = p || 1;
+    Api.get("auth/users/", { page }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#users-tbody").html(rows.length ? rows.map(u => `
+        <tr>
+          <td class="fw-semibold">@${esc(u.username)}</td>
+          <td>${esc(u.first_name || "")} ${esc(u.last_name || "")}</td>
+          <td class="small">${esc(u.phone || "-")}</td>
+          <td><span class="badge ${roleBadge[u.role] || "text-bg-secondary"}">${esc(u.role)}</span></td>
+          <td class="small">${esc(u.flat_label || "-")}</td>
+          <td>${u.is_active ? '<span class="status-pill st-approved">active</span>' : '<span class="status-pill st-rejected">inactive</span>'}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-outline-primary me-1" data-reset="${u.id}" title="Reset password"><i class="bi bi-key"></i></button>
+            <button class="btn btn-sm btn-outline-secondary me-1" data-role="${u.id}" title="Change role"><i class="bi bi-arrow-repeat"></i></button>
+            ${u.is_active ? `<button class="btn btn-sm btn-outline-danger" data-deact="${u.id}" title="Deactivate"><i class="bi bi-slash-circle"></i></button>` : ""}
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="7" class="text-center text-muted py-5">No users</td></tr>`);
+      renderPager("#users-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  $("#btn-add-user").on("click", function () { $("#user-form")[0].reset(); $("#userModal").modal("show"); });
+
+  $("#user-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(this).entries());
+    Api.post("auth/users/", data).done(function (res) {
+      if (res.success) { toastSuccess(res.message); $("#userModal").modal("hide"); load(page); }
+    });
+  });
+
+  $(document).on("click", "[data-reset]", function () {
+    if (!confirm("Generate a new temporary password for this user?")) return;
+    Api.post(`auth/users/${$(this).data("reset")}/reset_password/`).done(function (res) {
+      toastr.options.timeOut = 10000;
+      toastSuccess(`${res.message} — Temporary password: ${res.data.temporary_password}`);
+    });
+  });
+
+  $(document).on("click", "[data-role]", function () {
+    const id = $(this).data("role");
+    const role = prompt("New role (admin / committee / resident):", "resident");
+    if (!role) return;
+    Api.patch(`auth/users/${id}/`, { role }).done(function (res) { toastSuccess(res.message); load(page); });
+  });
+
+  $(document).on("click", "[data-deact]", function () {
+    if (!confirm("Deactivate this user's login?")) return;
+    Api.del(`auth/users/${$(this).data("deact")}/`).done(function (res) { toastSuccess(res.message); load(page); });
+  });
+
+  load(1);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Expenses — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-receipt me-2"></i>Expense Management</h3>
+    <div class="d-flex gap-2">
+      <select id="cat-filter" class="form-select form-select-sm" style="width:auto">
+        <option value="">All Categories</option>
+        <option value="maintenance">Maintenance</option><option value="security">Security</option>
+        <option value="housekeeping">Housekeeping</option><option value="utilities">Utilities</option>
+        <option value="repairs">Repairs</option><option value="events">Events</option>
+        <option value="salaries">Salaries</option><option value="other">Other</option>
+      </select>
+      <button class="btn btn-success" id="btn-add-expense"><i class="bi bi-plus-lg me-1"></i>Log Expense</button>
+    </div>
+  </div>
+
+  <div class="card panel-card">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Title</th><th>Category</th><th>Amount</th><th>Paid To</th><th>Date</th><th>Receipt</th><th>Added By</th><th class="text-end">Actions</th></tr></thead>
+          <tbody id="expenses-tbody"><tr><td colspan="8" class="text-center text-muted py-5">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer bg-white" id="expenses-pager"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="expenseModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="expense-modal-title">Log Expense</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="expense-form" enctype="multipart/form-data">
+        <div class="modal-body row g-3">
+          <div class="col-12"><label class="form-label">Title</label><input name="title" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Category</label>
+            <select name="category" class="form-select">
+              <option value="maintenance">Maintenance</option><option value="security">Security</option>
+              <option value="housekeeping">Housekeeping</option><option value="utilities">Utilities</option>
+              <option value="repairs">Repairs</option><option value="events">Events</option>
+              <option value="salaries">Salaries</option><option value="other">Other</option>
+            </select></div>
+          <div class="col-md-6"><label class="form-label">Amount (₹)</label>
+            <input name="amount" type="number" step="0.01" class="form-control" required></div>
+          <div class="col-md-6"><label class="form-label">Paid To (vendor/staff)</label><input name="paid_to" class="form-control"></div>
+          <div class="col-md-6"><label class="form-label">Expense Date</label>
+            <input name="expense_date" type="date" class="form-control" required></div>
+          <div class="col-12"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="2"></textarea></div>
+          <div class="col-12"><label class="form-label">Receipt / Proof Image</label>
+            <input name="receipt_image" type="file" accept="image/*" class="form-control"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Save Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { INR, formatDate, renderPager } = SMSUI;
+  let page = 1, editingId = null;
+
+  function load(p) {
+    page = p || 1;
+    const params = { page };
+    const cat = $("#cat-filter").val(); if (cat) params.category = cat;
+    Api.get("expenses/", params).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#expenses-tbody").html(rows.length ? rows.map(x => `
+        <tr>
+          <td class="fw-semibold">${esc(x.title)}<div class="text-muted small">${esc(x.description || "")}</div></td>
+          <td><span class="badge text-bg-light border">${esc(x.category_display)}</span></td>
+          <td class="fw-semibold">${INR(x.amount)}</td>
+          <td class="small">${esc(x.paid_to || "-")}</td>
+          <td class="small">${formatDate(x.expense_date)}</td>
+          <td>${x.receipt_image ? `<a href="${x.receipt_image}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-image"></i></a>` : "-"}</td>
+          <td class="small">@${esc(x.added_by_name || "-")}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-outline-primary me-1" data-edit-e="${x.id}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger" data-del-e="${x.id}"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="8" class="text-center text-muted py-5">No expenses logged</td></tr>`);
+      renderPager("#expenses-pager", d.count || rows.length, page, 20, load);
+    });
+  }
+
+  $("#btn-add-expense").on("click", function () {
+    editingId = null; $("#expense-form")[0].reset();
+    $("#expense-modal-title").text("Log Expense"); $("#expenseModal").modal("show");
+  });
+
+  $(document).on("click", "[data-edit-e]", function () {
+    const id = $(this).data("edit-e");
+    Api.get(`expenses/${id}/`).done(function (res) {
+      const x = res.data; editingId = id;
+      $("#expense-modal-title").text("Edit Expense #" + id);
+      const f = $("#expense-form");
+      f.find('[name="title"]').val(x.title);
+      f.find('[name="category"]').val(x.category);
+      f.find('[name="amount"]').val(x.amount);
+      f.find('[name="paid_to"]').val(x.paid_to);
+      f.find('[name="expense_date"]').val(x.expense_date);
+      f.find('[name="description"]').val(x.description);
+      $("#expenseModal").modal("show");
+    });
+  });
+
+  $("#expense-form").on("submit", function (e) {
+    e.preventDefault();
+    const fd = new FormData(this);
+    if (!editingId) {
+      Api.upload("expenses/", fd).done(function (res) {
+        if (res.success) { toastSuccess(res.message); $("#expenseModal").modal("hide"); load(1); }
+      });
+    } else {
+      const data = Object.fromEntries(fd.entries());
+      delete data.receipt_image;
+      Api.patch(`expenses/${editingId}/`, data).done(function (res) {
+        if (res.success) { toastSuccess(res.message); $("#expenseModal").modal("hide"); load(page); }
+      });
+    }
+  });
+
+  $(document).on("click", "[data-del-e]", function () {
+    if (!confirm("Delete this expense?")) return;
+    Api.del(`expenses/${$(this).data("del-e")}/`).done(function (res) { toastSuccess(res.message); load(page); });
+  });
+
+  $("#cat-filter").on("change", () => load(1));
+  load(1);
+});
+</script>
+{% endblock %}

@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}Services — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <h3 class="fw-bold mb-0"><i class="bi bi-droplet-half me-2"></i>Service Management</h3>
+    <button class="btn btn-success" id="btn-add-service"><i class="bi bi-plus-lg me-1"></i>Add Service</button>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-lg-5">
+      <div class="card panel-card">
+        <div class="card-header py-3">Master Services</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Service</th><th>Charges</th><th>Status</th><th></th></tr></thead>
+              <tbody id="services-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card panel-card mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+          <span>Assign Service to Flat</span>
+        </div>
+        <div class="card-body">
+          <form id="assign-form" class="row g-2 align-items-end">
+            <div class="col-md-4"><label class="form-label small">Flat</label>
+              <select name="flat" id="assign-flat" class="form-select" required></select></div>
+            <div class="col-md-3"><label class="form-label small">Service</label>
+              <select name="service" id="assign-service" class="form-select" required></select></div>
+            <div class="col-md-2"><label class="form-label small">Action</label>
+              <select name="action" class="form-select"><option value="enable">Enable</option><option value="disable">Disable</option></select></div>
+            <div class="col-md-3"><label class="form-label small">Remark</label>
+              <div class="d-flex gap-2"><input name="remark" class="form-control" placeholder="optional">
+              <button class="btn btn-success text-nowrap" type="submit"><i class="bi bi-check2"></i> Apply</button></div></div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card panel-card">
+        <div class="card-header py-3"><i class="bi bi-clock-history me-2"></i>Service Audit Log</div>
+        <div class="card-body p-0">
+          <div class="table-responsive" style="max-height:420px;overflow:auto">
+            <table class="table table-sm table-hover mb-0">
+              <thead><tr><th>Time</th><th>Flat</th><th>Service</th><th>Action</th><th>By</th><th>Remark</th></tr></thead>
+              <tbody id="audit-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer bg-white" id="audit-pager"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="serviceModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="service-modal-title">Add Service</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="service-form">
+        <div class="modal-body">
+          <div class="mb-3"><label class="form-label">Name</label><input name="name" class="form-control" required></div>
+          <div class="mb-3"><label class="form-label">Description</label><input name="description" class="form-control"></div>
+          <div class="mb-3"><label class="form-label">Monthly Charges (₹)</label>
+            <input name="monthly_charges" type="number" step="0.01" class="form-control" value="0"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { renderPager, formatDate } = SMSUI;
+  let editingId = null, auditPage = 1;
+
+  function loadServices() {
+    Api.get("services/").done(function (res) {
+      const rows = res.data || [];
+      $("#services-tbody").html(rows.map(s => `
+        <tr>
+          <td class="fw-semibold">${esc(s.name)}<div class="text-muted small">${esc(s.description || "")}</div></td>
+          <td>₹${Number(s.monthly_charges).toLocaleString("en-IN")}</td>
+          <td>${s.is_active ? '<span class="status-pill st-approved">active</span>' : '<span class="status-pill st-rejected">inactive</span>'}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary me-1" data-edit-s="${s.id}"><i class="bi bi-pencil"></i></button>
+            ${s.is_active ? `<button class="btn btn-sm btn-outline-danger" data-deact-s="${s.id}"><i class="bi bi-x-circle"></i></button>` : ""}
+          </td>
+        </tr>`).join(""));
+      $("#assign-service").html(rows.filter(s => s.is_active).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join(""));
+    });
+  }
+
+  function loadFlats() {
+    Api.get("flats/", { is_active: "true", page_size: 100 }).done(function (res) {
+      const rows = (res.data && res.data.results) || res.data || [];
+      $("#assign-flat").html(rows.map(f => `<option value="${f.id}">${esc(f.wing_name)}-${esc(f.flat_no)} (${esc(f.owner_name)})</option>`).join(""));
+    });
+  }
+
+  function loadAudit(p) {
+    auditPage = p || 1;
+    Api.get("flat-services/", { page: auditPage }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#audit-tbody").html(rows.length ? rows.map(a => `
+        <tr><td class="small text-muted">${formatDate(a.timestamp)}</td>
+        <td>${esc(a.flat_label)}</td><td>${esc(a.service_name)}</td>
+        <td>${a.action === "enable" || a.action === "create" ? '<span class="status-pill st-approved">' + a.action + "</span>" : '<span class="status-pill st-rejected">' + a.action + "</span>"}</td>
+        <td class="small">${esc(a.changed_by_name || "-")}</td><td class="small">${esc(a.remark || "")}</td></tr>`).join("")
+        : `<tr><td colspan="6" class="text-center text-muted py-4">No audit entries yet</td></tr>`);
+      renderPager("#audit-pager", d.count || rows.length, auditPage, 20, loadAudit);
+    });
+  }
+
+  $("#btn-add-service").on("click", function () {
+    editingId = null; $("#service-form")[0].reset();
+    $("#service-modal-title").text("Add Service"); $("#serviceModal").modal("show");
+  });
+
+  $(document).on("click", "[data-edit-s]", function () {
+    const id = $(this).data("edit-s");
+    Api.get(`services/${id}/`).done(function (res) {
+      const s = res.data; editingId = id;
+      $("#service-modal-title").text("Edit Service");
+      $("#service-form").find('[name="name"]').val(s.name);
+      $("#service-form").find('[name="description"]').val(s.description);
+      $("#service-form").find('[name="monthly_charges"]').val(s.monthly_charges);
+      $("#serviceModal").modal("show");
+    });
+  });
+
+  $(document).on("click", "[data-deact-s]", function () {
+    if (!confirm("Deactivate this service?")) return;
+    Api.del(`services/${$(this).data("deact-s")}/`).done(function (res) { toastSuccess(res.message); loadServices(); });
+  });
+
+  $("#service-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = {
+      name: $(this).find('[name="name"]').val().trim(),
+      description: $(this).find('[name="description"]').val().trim(),
+      monthly_charges: $(this).find('[name="monthly_charges"]').val() || 0,
+    };
+    const req = editingId ? Api.patch(`services/${editingId}/`, data) : Api.post("services/", data);
+    req.done(function (res) { if (res.success) { toastSuccess(res.message); $("#serviceModal").modal("hide"); loadServices(); } });
+  });
+
+  $("#assign-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = {
+      flat: parseInt($(this).find('[name="flat"]').val(), 10),
+      service: parseInt($(this).find('[name="service"]').val(), 10),
+      action: $(this).find('[name="action"]').val(),
+      remark: $(this).find('[name="remark"]').val(),
+    };
+    Api.post("flat-services/", data).done(function (res) {
+      toastSuccess(res.message); loadAudit(1);
+    });
+  });
+
+  loadServices(); loadFlats(); loadAudit(1);
+});
+</script>
+{% endblock %}

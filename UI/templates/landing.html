@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}GreenValue Society — Home{% endblock %}
+{% block body_class %}bg-white{% endblock %}
+{% block main_class %}{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col-lg-7">
+        <span class="badge rounded-pill px-3 py-2 mb-3" style="background:var(--sms-accent);color:#3b2a00">
+          <i class="bi bi-star-fill me-1"></i>Resident-first society management
+        </span>
+        <h1 class="display-4 mb-3">Everything your housing society needs, in one place.</h1>
+        <p class="lead opacity-75 mb-4">Flats &amp; services, maintenance collection with approvals, complaint
+          tracking, expense transparency and announcements — digitized end-to-end.</p>
+        <div class="d-flex gap-3 flex-wrap">
+          <a href="/ui/login/" class="btn btn-sms btn-lg px-4"><i class="bi bi-box-arrow-in-right me-2"></i>Resident Login</a>
+          <a href="/ui/login/?admin=1" class="btn btn-outline-light btn-lg px-4"><i class="bi bi-shield-lock me-2"></i>Admin Login</a>
+        </div>
+      </div>
+      <div class="col-lg-5 d-none d-lg-block text-end">
+        <i class="bi bi-buildings" style="font-size:14rem;opacity:.15"></i>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5">
+  <div class="container">
+    <div class="text-center mb-5">
+      <h2 class="fw-bold">Society Amenities</h2>
+      <p class="text-muted">World-class facilities managed digitally</p>
+    </div>
+    <div class="row g-4">
+      {% for icon, name, desc in amenities %}{% endfor %}
+      <div class="col-md-6 col-lg-3">
+        <div class="card amenity-card p-4 text-center h-100">
+          <div class="amenity-icon mb-3"><i class="bi bi-droplet-half"></i></div>
+          <h6 class="fw-bold">24×7 Water</h6>
+          <p class="text-muted small mb-0">Borewell + municipal supply with per-flat service mapping.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="card amenity-card p-4 text-center h-100">
+          <div class="amenity-icon mb-3"><i class="bi bi-lightning-charge"></i></div>
+          <h6 class="fw-bold">Power Backup</h6>
+          <p class="text-muted small mb-0">Full DG backup with automatic transfer switching.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="card amenity-card p-4 text-center h-100">
+          <div class="amenity-icon mb-3"><i class="bi bi-controller"></i></div>
+          <h6 class="fw-bold">Clubhouse &amp; Gym</h6>
+          <p class="text-muted small mb-0">Access controlled through flat-based service enablement.</p>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="card amenity-card p-4 text-center h-100">
+          <div class="amenity-icon mb-3"><i class="bi bi-shield-check"></i></div>
+          <h6 class="fw-bold">Security</h6>
+          <p class="text-muted small mb-0">CCTV coverage and guarded entry, funded transparently.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5" style="background:#eef5f2">
+  <div class="container">
+    <div class="row g-4 text-center">
+      <div class="col-6 col-md-3"><h3 class="fw-bold" style="color:var(--sms-primary)">128</h3><p class="text-muted mb-0">Flats</p></div>
+      <div class="col-6 col-md-3"><h3 class="fw-bold" style="color:var(--sms-primary)">4</h3><p class="text-muted mb-0">Wings</p></div>
+      <div class="col-6 col-md-3"><h3 class="fw-bold" style="color:var(--sms-primary)">100%</h3><p class="text-muted mb-0">Expense Transparency</p></div>
+      <div class="col-6 col-md-3"><h3 class="fw-bold" style="color:var(--sms-primary)">24/7</h3><p class="text-muted mb-0">Issue Tracking</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="py-5">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-md-8 text-center">
+        <h2 class="fw-bold mb-3">Ready to go digital?</h2>
+        <p class="text-muted mb-4">Sign in with the credentials issued by your society admin.</p>
+        <a href="/ui/login/" class="btn btn-sms btn-lg px-5">Login Now</a>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}
