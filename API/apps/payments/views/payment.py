@@ -63,6 +63,13 @@ class MaintenancePaymentViewSet(EnvelopePaginationMixin, viewsets.ViewSet):
                 Q(receipt_no__icontains=search) | Q(flat__flat_no__icontains=search)
                 | Q(flat__owner_name__icontains=search) | Q(remark__icontains=search)
             )
+        # month-wise filter: ?year=2026&month=9 (used by the My Payments filter bar)
+        from API.apps.core.pagination import parse_month_filter
+        y, m = parse_month_filter(self.request)
+        if y:
+            qs = qs.filter(period_year=y)
+        if m:
+            qs = qs.filter(period_month=m)
         return qs
 
     # ---------------------------------------------------------------- CRUD

@@ -39,21 +39,33 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
 
 
 # ------------------------------------------------------------------ list / detail
+MONTH_NAMES = ["", "January", "February", "March", "April", "May", "June",
+               "July", "August", "September", "October", "November", "December"]
+
+
 class PaymentListSerializer(serializers.ModelSerializer):
     flat_label = serializers.CharField(source="flat.__str__", read_only=True)
     submitted_by_name = serializers.CharField(source="submitted_by.username", read_only=True, default=None)
     approved_by_name = serializers.CharField(source="approved_by.username", read_only=True, default=None)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     mode_display = serializers.CharField(source="get_mode_display", read_only=True)
+    # UI shows the month NAME (e.g. "Sep 2026") instead of a raw period number
+    month_display = serializers.SerializerMethodField()
 
     class Meta:
         model = MaintenancePayment
         fields = [
             "id", "flat", "flat_label", "amount", "receipt_no", "mode", "mode_display",
-            "remark", "proof_image", "period_month", "period_year", "status", "status_display",
+            "remark", "proof_image", "period_month", "period_year", "month_display",
+            "status", "status_display",
             "submitted_by", "submitted_by_name", "approved_by", "approved_by_name",
             "approved_at", "rejection_reason", "created_at",
         ]
+
+    def get_month_display(self, obj):
+        m = obj.period_month or 0
+        name = MONTH_NAMES[m] if 1 <= m <= 12 else ""
+        return f"{name[:3]} {obj.period_year}".strip() if name else str(obj.period_year or "")
 
 
 class PaymentDetailSerializer(PaymentListSerializer):
