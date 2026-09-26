@@ -3,6 +3,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
 from API.apps.core.permissions import IsAdminOrCommittee
+from API.apps.core.exceptions import first_error_message
 from API.apps.core.responses import api_error, api_success
 from API.apps.expenses.models import Expense
 from API.apps.expenses.serializers import ExpenseSerializer
@@ -43,7 +44,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save(added_by=request.user)
         return api_success("Expense logged successfully", data=ser.data, status=201)
 
@@ -54,7 +55,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             return api_error("Expense not found", status=404)
         ser = self.get_serializer(obj, data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Expense updated successfully", data=ser.data)
 

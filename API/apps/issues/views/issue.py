@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdminOrCommittee
+from API.apps.core.exceptions import first_error_message
 from API.apps.core.responses import api_error, api_success
 from API.apps.issues.models import Issue, IssueComment, IssueResolution, IssueVote
 from API.apps.issues.serializers import (
@@ -64,7 +65,7 @@ class IssueViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = IssueCreateSerializer(data=request.data, context={"request": request})
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Issue raised successfully", data=IssueDetailSerializer(ser.instance, context={"request": request}).data, status=201)
 
@@ -104,7 +105,7 @@ class IssueViewSet(viewsets.ModelViewSet):
                 issue.comments.select_related("user").all(), many=True).data)
         ser = IssueCommentSerializer(data=request.data, context={"request": request})
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save(user=request.user, issue=issue)
         return api_success("Comment added successfully", data=ser.data, status=201)
 
@@ -117,7 +118,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             return api_error("Issue not found", status=404)
         ser = IssueStatusSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         issue.status = ser.validated_data["status"]
         issue.save(update_fields=["status", "updated_at"])
         return api_success("Issue status updated successfully",
@@ -132,7 +133,7 @@ class IssueViewSet(viewsets.ModelViewSet):
             return api_error("Issue not found", status=404)
         ser = IssueResolveSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         with transaction.atomic():
             res, _ = IssueResolution.objects.update_or_create(
                 issue=issue,

@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdmin, IsAdminOrCommittee
+from API.apps.core.exceptions import first_error_message
 from API.apps.core.responses import api_error, api_success
 from API.apps.flats.models import Flat, FlatServiceAuditLog, Service, Wing
 from API.apps.flats.serializers import (
@@ -29,7 +30,7 @@ class WingViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Wing created successfully", data=ser.data, status=status.HTTP_201_CREATED)
 
@@ -73,7 +74,7 @@ class FlatViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = FlatCreateSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Flat created successfully", data=ser.data, status=201)
 
@@ -84,7 +85,7 @@ class FlatViewSet(viewsets.ModelViewSet):
             return api_error("Flat not found", status=404)
         ser = FlatCreateSerializer(obj, data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Flat updated successfully", data=ser.data)
 
@@ -158,7 +159,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Service created successfully", data=ser.data, status=201)
 
@@ -169,7 +170,7 @@ class ServiceViewSet(viewsets.ModelViewSet):
             return api_error("Service not found", status=404)
         ser = self.get_serializer(obj, data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Service updated successfully", data=ser.data)
 
@@ -202,7 +203,7 @@ class FlatServiceViewSet(viewsets.ViewSet):
     def create(self, request):
         ser = FlatServiceToggleSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         link = set_flat_service(
             ser.validated_data["flat"], ser.validated_data["service"],
             ser.validated_data["action"], request.user, ser.validated_data.get("remark", ""),

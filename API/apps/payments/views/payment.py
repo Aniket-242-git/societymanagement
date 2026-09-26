@@ -5,6 +5,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdminOrCommittee
+from API.apps.core.exceptions import first_error_message
 from API.apps.core.responses import api_error, api_success
 from API.apps.payments.models import MaintenancePayment, PaymentAuditLog
 from API.apps.payments.serializers import (
@@ -73,7 +74,7 @@ class MaintenancePaymentViewSet(viewsets.ViewSet):
         """Resident submits payment -> status pending (rate limited: payment_submit scope)."""
         ser = PaymentCreateSerializer(data=request.data, context={"request": request})
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         payment = submit_payment(ser.validated_data, request.user)
         return api_success("Payment submitted successfully and is pending approval",
                            data=PaymentDetailSerializer(payment).data, status=201)
@@ -89,7 +90,7 @@ class MaintenancePaymentViewSet(viewsets.ViewSet):
             return api_error("Payment is already approved.")
         ser = PaymentApproveSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         payment = approve_payment(payment, request.user, ser.validated_data.get("remark", ""))
         return api_success("Payment approved successfully", data=PaymentDetailSerializer(payment).data)
 
@@ -103,7 +104,7 @@ class MaintenancePaymentViewSet(viewsets.ViewSet):
             return api_error("Cannot reject an already approved payment. Edit it instead.")
         ser = PaymentRejectSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         payment = reject_payment(payment, request.user, ser.validated_data["reason"])
         return api_success("Payment rejected successfully", data=PaymentDetailSerializer(payment).data)
 
@@ -117,7 +118,7 @@ class MaintenancePaymentViewSet(viewsets.ViewSet):
             return api_error("Only admin can edit payments.", status=403)
         ser = PaymentEditSerializer(data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         remark = request.data.get("audit_remark", "")
         payment = edit_payment(payment, ser.validated_data, request.user, remark)
         return api_success("Payment updated successfully", data=PaymentDetailSerializer(payment).data)

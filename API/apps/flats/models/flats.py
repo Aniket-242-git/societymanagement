@@ -41,7 +41,30 @@ class Flat(models.Model):
         indexes = [models.Index(fields=["is_active"]), models.Index(fields=["created_at"])]
 
     def __str__(self):
-        return f"{self.wing.name}-{self.flat_no} ({self.owner_name})"
+        return f"{self.wing.name}-{self.flat_no} ({self.owner_name})" if self.wing_id else f"{self.flat_no} ({self.owner_name})"
+
+
+class FlatOwner(models.Model):
+    """Many-to-many between users and flats (a resident CAN own multiple flats).
+
+    The legacy `Flat.owner` FK is kept in sync with the *primary* owner so all
+    existing queries (`flat__owner=user`, dashboard scoping, etc.) keep working.
+    """
+
+    flat = models.ForeignKey(Flat, on_delete=models.CASCADE, related_name="owner_links")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="flat_links"
+    )
+    is_primary = models.BooleanField(default=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("flat", "user")
+        verbose_name_plural = "Flat owners"
+        ordering = ["-is_primary", "added_at"]
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.flat}"
 
 
 class Service(models.Model):
