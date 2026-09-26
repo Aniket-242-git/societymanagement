@@ -22,7 +22,13 @@ from API.apps.flats.services import change_flat_owner, set_flat_service
 
 
 class WingViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminOrCommittee]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        # everyone logged-in can read the wing list (dropdowns); writes are admin-only
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAdminOrCommittee()]
     serializer_class = WingSerializer
 
     def get_queryset(self):
@@ -41,8 +47,21 @@ class WingViewSet(viewsets.ModelViewSet):
 
 
 class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
-    permission_classes = [IsAdminOrCommittee]
-    filterset_fields = ["wing", "is_active"]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """Read-only actions are allowed for every authenticated user; the
+        per-flat history endpoints do their own ownership checks inside
+        (_check_flat_access). All write actions stay admin/committee only."""
+        if self.action in (
+            "list", "retrieve", "maintenance_history", "service_history",
+            "owner_history", "tenants",
+        ):
+            return [IsAuthenticated()]
+        if self.action in ("create", "update", "partial_update", "destroy",
+                           "activate", "bulk_import"):
+            return [IsAdminOrCommittee()]
+        return [IsAdminOrCommittee()]
 
     def get_queryset(self):
         qs = Flat.objects.select_related("wing", "owner")
@@ -60,6 +79,13 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
                 | Q(owner_name__icontains=search)
                 | Q(wing__name__icontains=search)
             )
+        # ?mine=true -> only the flats mapped to the logged-in resident
+        if self.request.query_params.get("mine") == "true":
+            from API.apps.flats.models import FlatOwner
+            flat_ids = set(
+                FlatOwner.objects.filter(user=self.request.user).values_list("flat_id", flat=True)
+            )
+            qs = qs.filter(Q(pk__in=flat_ids) | Q(owner=self.request.user))
         return qs.order_by("-created_at")
 
     def get_serializer_class(self):
@@ -100,14 +126,41 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
         return api_success("Flat updated successfully", data=ser.data)
 
     def destroy(self, request, pk=None, *args, **kwargs):
-        """Soft-delete: deactivate instead of hard delete."""
+        """Soft-delete: deactivate instead of hard delete.
+
+        Blocked when residents are still mapped to the flat — revoke first.
+        """
         try:
             obj = Flat.objects.get(pk=pk)
         except Flat.DoesNotExist:
             return api_error("Flat not found", status=404)
+        if not obj.is_active:
+            return api_success("Flat is already deactivated")
+        from API.apps.flats.models import FlatOwner
+
+        linked = list(FlatOwner.objects.filter(flat=obj).select_related("user")[:5])
+        if linked or obj.owner_id:
+            names = ", ".join(l.user.username for l in linked) or (obj.owner.username if obj.owner_id else "")
+            return api_error(
+                f"This flat is assigned to user(s): {names}. "
+                "Revoke the flat from the user first (Users → Edit → Flats), then deactivate."
+            )
         obj.is_active = False
         obj.save(update_fields=["is_active", "updated_at"])
         return api_success("Flat deactivated successfully")
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminOrCommittee])
+    def activate(self, request, pk=None):
+        """Re-activate a previously deactivated flat."""
+        try:
+            obj = Flat.objects.get(pk=pk)
+        except Flat.DoesNotExist:
+            return api_error("Flat not found", status=404)
+        if obj.is_active:
+            return api_error("Flat is already active.")
+        obj.is_active = True
+        obj.save(update_fields=["is_active", "updated_at"])
+        return api_success("Flat activated successfully", data=FlatDetailSerializer(obj).data)
 
     # ------------------------------------------------------------- history tabs
     def _check_flat_access(self, request, flat_id):
@@ -171,9 +224,9 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
         ser.save(added_by=request.user, flat=flat)
         return api_success("Tenant added successfully", data=ser.data, status=201)
 
-    @action(detail=False, methods=["get", "post"], permission_classes=[IsAdminOrCommittee])
+    @action(detail=False, methods=["get", "post"], permission_classes=[IsAuthenticated])
     def owner_history(self, request):
-        """Owner-change history (GET) and owner transfer (POST) for a flat."""
+        """Owner-change history (GET) and owner transfer (POST — admin only)."""
         flat, err = self._check_flat_access(request, request.query_params.get("flat") or request.data.get("flat"))
         if err:
             return err
@@ -183,6 +236,8 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
             if page is not None:
                 return self.get_paginated_response(OwnerChangeHistorySerializer(page, many=True).data)
             return api_success(data=OwnerChangeHistorySerializer(qs, many=True).data)
+        if not request.user.is_staff_role:
+            return api_error("Only admin can transfer flat ownership.", status=403)
         new_user_id = request.data.get("new_user")
         new_name = (request.data.get("new_owner_name") or "").strip()
         if not new_user_id and not new_name:
@@ -249,11 +304,23 @@ class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
 
 
 class ServiceViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAdminOrCommittee]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        # residents need the master service list for their "services active" view
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAdminOrCommittee()]
+
     serializer_class = ServiceSerializer
 
     def get_queryset(self):
-        return Service.objects.annotate(enabled_flat_count=Count("flat_links", filter=None)).order_by("-created_at")
+        qs = Service.objects.all()
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
+        return qs.order_by("-created_at")
 
     def list(self, request, *args, **kwargs):
         return api_success(data=self.get_serializer(self.get_queryset(), many=True).data)

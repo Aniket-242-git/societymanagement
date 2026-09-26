@@ -40,6 +40,35 @@ class FlatCreateSerializer(serializers.ModelSerializer):
             "owner", "is_tenant_occupied", "monthly_maintenance", "is_active",
         ]
 
+    def validate(self, attrs):
+        """Business rules:
+        - A flat that still has resident user(s) mapped CANNOT be deactivated.
+          The admin must revoke all flat mappings first (Users screen or the
+          owner field here). Re-activation is always allowed.
+        """
+        new_owner = attrs.get("owner", self.instance.owner if self.instance else None)
+        new_active = attrs.get("is_active", self.instance.is_active if self.instance else True)
+        if self.instance is not None and not new_active and self.instance.is_active:
+            from API.apps.flats.models import FlatOwner
+
+            linked = list(
+                FlatOwner.objects.filter(flat=self.instance)
+                .select_related("user")[:5]
+            )
+            if linked:
+                names = ", ".join(l.user.username for l in linked)
+                raise serializers.ValidationError({
+                    "is_active": (
+                        f"This flat is assigned to user(s): {names}. "
+                        "Revoke the flat from the user first (Users → Edit → Flats), "
+                        "then deactivate."
+                    )
+                })
+        # keep FlatOwner mapping in sync when owner FK set directly on this form
+        if "owner" in attrs:
+            self._sync_owner_link = attrs["owner"]
+        return attrs
+
     def update(self, instance, validated_data):
         """Log an OwnerChangeHistory entry whenever the owner changes."""
         new_owner = validated_data.get("owner")
@@ -63,7 +92,17 @@ class FlatCreateSerializer(serializers.ModelSerializer):
                 reason=validated_data.pop("change_reason", "") or "",
                 changed_by=getattr(request, "user", None),
             )
-        return super().update(instance, validated_data)
+        flat = super().update(instance, validated_data)
+        # keep FlatOwner M2M in sync when the owner FK is edited from this form
+        if "owner" in validated_data:
+            from API.apps.flats.models import FlatOwner
+
+            FlatOwner.objects.filter(flat=flat).exclude(user=flat.owner).delete()
+            if flat.owner_id:
+                FlatOwner.objects.update_or_create(
+                    flat=flat, user=flat.owner, defaults={"is_primary": True},
+                )
+        return flat
 
 
 class FlatDetailSerializer(FlatListSerializer):
