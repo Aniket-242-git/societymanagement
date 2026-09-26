@@ -35,4 +35,36 @@
   }
 
   window.SMSUI = { INR, statusPill, formatDate, renderPager };
+
+  // Month filter helpers — every list page with a month-wise filter uses these.
+  const MONTHS = ["All Months", "January", "February", "March", "April", "May", "June",
+                  "July", "August", "September", "October", "November", "December"];
+
+  // Injects <option>s into a month <select> (value "" = all months).
+  function fillMonthSelect($sel, includeAll = true) {
+    const start = includeAll ? 0 : 1;
+    $sel.html(Array.from({ length: 13 - start }, (_, i) =>
+      `<option value="${includeAll && i === 0 ? "" : i}">${MONTHS[i]}</option>`).join(""));
+  }
+
+  // Injects <option>s into a year <select> (value "" = all years).
+  function fillYearSelect($sel, span = 4) {
+    const y = new Date().getFullYear();
+    const years = []; for (let i = y + 1; i >= y - span; i--) years.push(i);
+    $sel.html(`<option value="">All Years</option>` + years.map(v => `<option value="${v}">${v}</option>`).join(""));
+  }
+
+  // Reads #month-filter/#year-filter (if present on the page) into API params.
+  function monthParams(params) {
+    params = params || {};
+    const m = $("#month-filter").val(), y = $("#year-filter").val();
+    if (m) params.month = m;
+    if (y) params.year = y;
+    return params;
+  }
+
+  window.SMSUI.MONTHS = MONTHS;
+  window.SMSUI.fillMonthSelect = fillMonthSelect;
+  window.SMSUI.fillYearSelect = fillYearSelect;
+  window.SMSUI.monthParams = monthParams;
 })(window, jQuery);

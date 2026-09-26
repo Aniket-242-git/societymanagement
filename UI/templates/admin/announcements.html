@@ -6,6 +6,17 @@
     <h3 class="fw-bold mb-0"><i class="bi bi-megaphone me-2"></i>Announcements</h3>
     <button class="btn btn-success" id="btn-add-ann"><i class="bi bi-plus-lg me-1"></i>New Announcement</button>
   </div>
+
+  <!-- Search + month-wise filter bar (backend filtering via ?search=&year=&month=) -->
+  <div class="card panel-card mb-3">
+    <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+      <input id="search-ann" class="form-control form-control-sm" style="max-width:280px" placeholder="Search title or body…">
+      <select id="month-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <select id="year-filter" class="form-select form-select-sm" style="width:auto"></select>
+      <span class="text-muted small ms-auto">Showing newest first</span>
+    </div>
+  </div>
+
   <div class="row g-3" id="ann-list"><div class="col-12 text-center text-muted py-5">Loading…</div></div>
   <div id="ann-pager"></div>
 </div>
@@ -40,12 +51,17 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc, toastSuccess } = SMS; const { formatDate, renderPager } = SMSUI;
+  const { Api, esc, toastSuccess } = SMS; const { formatDate, renderPager, fillMonthSelect, fillYearSelect, monthParams } = SMSUI;
   let page = 1, editingId = null;
+
+  // populate the month-wise filter dropdowns
+  fillMonthSelect($("#month-filter")); fillYearSelect($("#year-filter"));
 
   function load(p) {
     page = p || 1;
-    Api.get("announcements/", { page }).done(function (res) {
+    const params = monthParams({ page });
+    const s = $("#search-ann").val(); if (s) params.search = s;
+    Api.get("announcements/", params).done(function (res) {
       const d = res.data || {};
       const rows = d.results || d || [];
       $("#ann-list").html(rows.length ? rows.map(a => `
@@ -68,9 +84,13 @@ $(function () {
             </div>
           </div>
         </div>`).join("") : '<div class="col-12 text-center text-muted py-5">No announcements yet.</div>');
-      renderPager("#ann-pager", d.count || rows.length, page, 20, load);
+      renderPager("#ann-pager", d.count || rows.length, page, d.page_size || 10, load);
     });
   }
+
+  // re-query (page 1) whenever search / month / year changes
+  $("#month-filter, #year-filter").on("change", () => load(1));
+  let annSearchT; $("#search-ann").on("input", function () { clearTimeout(annSearchT); annSearchT = setTimeout(() => load(1), 400); });
 
   $("#btn-add-ann").on("click", function () {
     editingId = null; $("#ann-form")[0].reset();
