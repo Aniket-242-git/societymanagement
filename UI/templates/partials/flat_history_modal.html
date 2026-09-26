@@ -1,0 +1,114 @@
+{# =====================================================================
+   FLAT HISTORY — shared modal used by BOTH sides:
+     • admin/flats.html        → clock-history button on every flat row
+     • resident/dashboard.html → "View Flat History" button per owned flat
+   Opening:  SMSFlatHistory.open(flatId, "A-101")
+   Data:     GET /api/v1/flats/{id}/history/  (one round-trip)
+   Tabs:     Maintenance fee · Tenants · Owner changes · Services
+   Residents are restricted server-side to their own flats; admins see all.
+   ===================================================================== #}
+<div class="modal fade" id="flatHistoryModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content rounded-4">
+      <div class="modal-header bg-success text-white rounded-top-4">
+        <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Flat History
+          <span id="fh-flat-label" class="fw-light"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-pills mb-3" id="fh-tabs" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#fh-tab-maint" type="button"><i class="bi bi-cash-coin me-1"></i>Maintenance Fee</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#fh-tab-tenants" type="button"><i class="bi bi-people me-1"></i>Tenant History</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#fh-tab-owner" type="button"><i class="bi bi-arrow-left-right me-1"></i>Owner Changes</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#fh-tab-svc" type="button"><i class="bi bi-droplet-half me-1"></i>Service History</button></li>
+        </ul>
+        <div class="tab-content" id="fh-tab-content">
+          <div class="tab-pane fade show active" id="fh-tab-maint">
+            <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+              <thead><tr><th>Amount</th><th>Month</th><th>Receipt</th><th>Mode</th><th>Status</th><th>Submitted By</th><th>Date</th></tr></thead>
+              <tbody id="fh-maint-body"></tbody></table></div>
+          </div>
+          <div class="tab-pane fade" id="fh-tab-tenants">
+            <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+              <thead><tr><th>Tenant</th><th>Phone</th><th>ID Proof</th><th>Move In</th><th>Move Out</th><th>Status</th></tr></thead>
+              <tbody id="fh-tenants-body"></tbody></table></div>
+          </div>
+          <div class="tab-pane fade" id="fh-tab-owner">
+            <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+              <thead><tr><th>From</th><th>To</th><th>Reason</th><th>Changed By</th><th>Date</th></tr></thead>
+              <tbody id="fh-owner-body"></tbody></table></div>
+          </div>
+          <div class="tab-pane fade" id="fh-tab-svc">
+            <div class="table-responsive"><table class="table table-sm table-hover mb-0">
+              <thead><tr><th>Service</th><th>Action</th><th>Remark</th><th>Changed By</th><th>Timestamp</th></tr></thead>
+              <tbody id="fh-svc-body"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer"><button class="btn btn-light" data-bs-dismiss="modal">Close</button></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Shared Flat-History controller — loaded once via the template include tag,
+   so admin and resident pages use identical rendering & API calls. */
+(function () {
+  "use strict";
+  const FH = {
+    open: function (flatId, label) {
+      if (!window.jQuery || !window.SMS) { alert("History requires jQuery + SMS core JS"); return; }
+      const esc = SMS.esc, body = $("body");
+      $("#fh-flat-label").text(label ? "— " + label : "");
+      const loading = '<tr><td colspan="7" class="text-center text-muted py-4">Loading history…</td></tr>';
+      ["#fh-maint-body", "#fh-tenants-body", "#fh-owner-body", "#fh-svc-body"]
+        .forEach(function (sel) { body.find(sel).html(loading); });
+      const modalEl = document.getElementById("flatHistoryModal");
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+
+      SMS.Api.get("flats/" + flatId + "/history/")
+        .done(function (res) {
+          if (!res || !res.success || !res.data) {
+            body.find("#fh-maint-body").html('<tr><td colspan="7" class="text-center text-danger py-4">' + esc((res && res.message) || "Could not load history.") + "</td></tr>");
+            return;
+          }
+          const d = res.data;
+          // --- Maintenance fee history (month shown, never raw period) ---
+          body.find("#fh-maint-body").html((d.maintenance && d.maintenance.length) ? d.maintenance.map(function (p) {
+            return "<tr><td class='fw-semibold'>" + SMSUI.INR(p.amount) + "</td>"
+              + "<td>" + esc(p.month_display || ((p.period_month || "") + "/" + (p.period_year || ""))) + "</td>"
+              + "<td>" + esc(p.receipt_no || "-") + "</td><td>" + esc(p.mode_display || p.mode || "-") + "</td>"
+              + "<td>" + SMSUI.statusPill(p.status) + "</td><td>" + esc(p.submitted_by_name || "-") + "</td>"
+              + "<td class='small'>" + SMSUI.formatDate(p.created_at) + "</td></tr>";
+          }).join("") : '<tr><td colspan="7" class="text-center text-muted py-4">No maintenance records yet</td></tr>');
+          // --- Tenant history ---
+          body.find("#fh-tenants-body").html((d.tenants && d.tenants.length) ? d.tenants.map(function (t) {
+            return "<tr><td class='fw-semibold'>" + esc(t.name) + "</td><td>" + esc(t.phone || "-") + "</td>"
+              + "<td class='small'>" + esc((t.id_proof_type || "") + (t.id_proof_no ? " · " + t.id_proof_no : "")) + "</td>"
+              + "<td>" + SMSUI.formatDate(t.move_in_date) + "</td><td>" + (t.move_out_date ? SMSUI.formatDate(t.move_out_date) : "-") + "</td>"
+              + "<td>" + SMSUI.statusPill(t.status) + "</td></tr>";
+          }).join("") : '<tr><td colspan="6" class="text-center text-muted py-4">No tenant records for this flat</td></tr>');
+          // --- Owner change history ---
+          body.find("#fh-owner-body").html((d.owner_changes && d.owner_changes.length) ? d.owner_changes.map(function (o) {
+            return "<tr><td>" + esc(o.previous_owner_name || "-") + "</td>"
+              + "<td class='fw-semibold'>" + esc(o.new_owner_name || "-") + "</td>"
+              + "<td class='small'>" + esc(o.reason || "-") + "</td><td>" + esc(o.changed_by_name || "-") + "</td>"
+              + "<td class='small'>" + SMSUI.formatDate(o.changed_at) + "</td></tr>";
+          }).join("") : '<tr><td colspan="5" class="text-center text-muted py-4">Ownership unchanged since assignment</td></tr>');
+          // --- Service enable/disable audit trail ---
+          body.find("#fh-svc-body").html((d.services && d.services.length) ? d.services.map(function (s) {
+            return "<tr><td>" + esc(s.service_name) + "</td>"
+              + "<td>" + SMSUI.statusPill((s.action || "").toLowerCase()) + "</td>"
+              + "<td class='small'>" + esc(s.remark || "-") + "</td><td>" + esc(s.changed_by_name || "-") + "</td>"
+              + "<td class='small'>" + SMSUI.formatDate(s.timestamp) + "</td></tr>";
+          }).join("") : '<tr><td colspan="5" class="text-center text-muted py-4">No service activity recorded</td></tr>');
+        })
+        .fail(function (xhr) {
+          const msg = (xhr.responseJSON && xhr.responseJSON.message) || "You do not have access to this flat.";
+          body.find("#fh-maint-body").html('<tr><td colspan="7" class="text-center text-danger py-4">' + esc(msg) + "</td></tr>");
+        });
+    }
+  };
+  window.SMSFlatHistory = FH;
+})();
+</script>
