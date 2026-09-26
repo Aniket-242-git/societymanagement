@@ -62,6 +62,10 @@ INSTALLED_APPS = [
     "UI",
 ]
 
+AUTHENTICATION_BACKENDS = [
+    "API.apps.accounts.backends.PhoneOrUsernameBackend",
+]
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
