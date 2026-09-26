@@ -6,6 +6,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdmin, IsAdminOrCommittee
 from API.apps.core.exceptions import first_error_message
+from API.apps.core.pagination import EnvelopePaginationMixin, StandardPagination
 from API.apps.core.responses import api_error, api_success
 from API.apps.flats.models import Flat, FlatServiceAuditLog, Service, Wing
 from API.apps.flats.serializers import (
@@ -184,10 +185,11 @@ class ServiceViewSet(viewsets.ModelViewSet):
         return api_success("Service deactivated successfully")
 
 
-class FlatServiceViewSet(viewsets.ViewSet):
+class FlatServiceViewSet(EnvelopePaginationMixin, viewsets.ViewSet):
     """Assign/enable/disable a service per flat — every change writes an audit log."""
 
     permission_classes = [IsAdminOrCommittee]
+    pagination_class = StandardPagination
 
     def list(self, request):
         qs = FlatServiceAuditLog.objects.select_related("flat", "service", "changed_by").all()

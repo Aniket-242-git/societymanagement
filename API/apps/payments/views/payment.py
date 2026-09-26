@@ -6,6 +6,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
 from API.apps.core.permissions import IsAdminOrCommittee
 from API.apps.core.exceptions import first_error_message
+from API.apps.core.pagination import EnvelopePaginationMixin, StandardPagination
 from API.apps.core.responses import api_error, api_success
 from API.apps.payments.models import MaintenancePayment, PaymentAuditLog
 from API.apps.payments.serializers import (
@@ -18,7 +19,7 @@ from API.apps.payments.services import (
 )
 
 
-class MaintenancePaymentViewSet(viewsets.ViewSet):
+class MaintenancePaymentViewSet(EnvelopePaginationMixin, viewsets.ViewSet):
     """Maintenance fee approval workflow.
 
     Resident: submit + view own history.   Admin/committee: approve/reject/edit/soft-delete.
@@ -27,6 +28,7 @@ class MaintenancePaymentViewSet(viewsets.ViewSet):
 
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    pagination_class = StandardPagination
 
     def get_throttles(self):
         # rate-limit payment submissions via the scoped 'payment_submit' throttle

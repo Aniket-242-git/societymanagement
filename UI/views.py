@@ -35,10 +35,12 @@ def ui_logout(request):
 def dashboard(request):
     user = request.user
     is_staff = user.is_staff_role
+    first_flat = user.owned_flats.order_by("wing__name", "flat_no").first()
     context = {
         "is_admin": is_staff,
         "is_resident": not is_staff,
-        "flat": getattr(user.owned_flats.first(), None,) if not is_staff else None,
+        "flat": first_flat,
+        "flats": [] if is_staff else list(user.owned_flats.select_related("wing")),
     }
     template = "admin/dashboard.html" if is_staff else "resident/dashboard.html"
     return render(request, template, context)

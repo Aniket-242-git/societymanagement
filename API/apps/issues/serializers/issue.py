@@ -71,8 +71,8 @@ class IssueCreateSerializer(serializers.ModelSerializer):
 class IssueListSerializer(serializers.ModelSerializer):
     flat_label = serializers.CharField(source="flat.__str__", read_only=True)
     created_by_name = serializers.CharField(source="created_by.username", read_only=True, default=None)
-    vote_count = serializers.IntegerField(read_only=True)
-    comment_count = serializers.IntegerField(read_only=True)
+    vote_count = serializers.IntegerField(source="_vote_count", read_only=True)
+    comment_count = serializers.IntegerField(source="_comment_count", read_only=True)
     has_voted = serializers.SerializerMethodField()
 
     class Meta:
