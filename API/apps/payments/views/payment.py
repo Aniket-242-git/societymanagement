@@ -1,3 +1,4 @@
+from django.db.models import Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -47,13 +48,21 @@ class MaintenancePaymentViewSet(EnvelopePaginationMixin, viewsets.ViewSet):
         )
         user = user or self.request.user
         if not user.is_staff_role:
-            qs = qs.filter(flat__owner=user)  # residents only see their own
+            from API.apps.flats.models import FlatOwner
+            flat_ids = set(FlatOwner.objects.filter(user=user).values_list("flat_id", flat=True))
+            qs = qs.filter(Q(flat__owner=user) | Q(flat_id__in=flat_ids))  # residents see all their flats
         status_f = self.request.query_params.get("status")
         if status_f:
             qs = qs.filter(status=status_f)
         flat = self.request.query_params.get("flat")
         if flat:
             qs = qs.filter(flat_id=flat)
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(
+                Q(receipt_no__icontains=search) | Q(flat__flat_no__icontains=search)
+                | Q(flat__owner_name__icontains=search) | Q(remark__icontains=search)
+            )
         return qs
 
     # ---------------------------------------------------------------- CRUD

@@ -1,5 +1,6 @@
 """Server-rendered UI pages (Django views). All data operations go through
 the DRF API via the central jQuery ajaxRequest() wrapper."""
+from django.conf import settings as dj_settings
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
@@ -7,10 +8,18 @@ from django.shortcuts import redirect, render
 from API.apps.accounts.models import User
 
 
+def _ctx(request, extra=None):
+    """Common template context (page size for JS pagination comes from .env)."""
+    c = {"page_size": dj_settings.PAGE_SIZE}
+    if extra:
+        c.update(extra)
+    return c
+
+
 def landing(request):
     if request.user.is_authenticated:
         return redirect("dashboard")
-    return render(request, "landing.html")
+    return render(request, "landing.html", _ctx(request))
 
 
 def ui_login(request):
@@ -18,12 +27,12 @@ def ui_login(request):
     if request.method == "POST":
         username = request.POST.get("username", "").strip()
         password = request.POST.get("password", "")
-        user = authenticate(request, username=username, password=password)
+        user = authenticate(request, username=username, password=password)  # PhoneOrUsernameBackend: username OR mobile
         if user is not None and user.is_active:
             login(request, user)
             return redirect("dashboard")
         error = "Invalid username or password."
-    return render(request, "login.html", {"error": error})
+    return render(request, "login.html", _ctx(request,  {"error": error}))
 
 
 def ui_logout(request):
@@ -43,6 +52,7 @@ def dashboard(request):
         "flats": [] if is_staff else list(user.owned_flats.select_related("wing")),
     }
     template = "admin/dashboard.html" if is_staff else "resident/dashboard.html"
+    context["page_size"] = dj_settings.PAGE_SIZE
     return render(request, template, context)
 
 
@@ -61,42 +71,47 @@ def _staff_required(view_func):
 
 @_staff_required
 def flats_page(request):
-    return render(request, "admin/flats.html")
+    return render(request, "admin/flats.html", _ctx(request))
 
 
 @_staff_required
 def services_page(request):
-    return render(request, "admin/services.html")
+    return render(request, "admin/services.html", _ctx(request))
 
 
 @_staff_required
 def users_page(request):
-    return render(request, "admin/users.html")
+    return render(request, "admin/users.html", _ctx(request))
 
 
 @_staff_required
 def announcements_page(request):
-    return render(request, "admin/announcements.html")
+    return render(request, "admin/announcements.html", _ctx(request))
 
 
 @_staff_required
 def payments_page(request):
-    return render(request, "admin/payments.html")
+    return render(request, "admin/payments.html", _ctx(request))
 
 
 @_staff_required
 def expenses_page(request):
-    return render(request, "admin/expenses.html")
+    return render(request, "admin/expenses.html", _ctx(request))
 
 
 @_staff_required
 def issues_page(request):
-    return render(request, "admin/issues.html")
+    return render(request, "admin/issues.html", _ctx(request))
 
 
 @_staff_required
+@_staff_required
+def settings_page(request):
+    return render(request, "admin/settings.html", _ctx(request))
+
+
 def reports_page(request):
-    return render(request, "admin/reports.html")
+    return render(request, "admin/reports.html", _ctx(request))
 
 
 # ---- resident pages --------------------------------------------------------

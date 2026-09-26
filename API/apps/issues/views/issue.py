@@ -39,6 +39,13 @@ class IssueViewSet(viewsets.ModelViewSet):
         category = self.request.query_params.get("category")
         if category:
             qs = qs.filter(category=category)
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+                | Q(created_by__username__icontains=search)
+            )
         return qs.order_by("-created_at")
 
     def get_serializer_class(self):

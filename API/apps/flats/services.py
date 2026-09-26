@@ -24,3 +24,33 @@ def set_flat_service(flat, service, action, user, remark=""):
         changed_by=user, remark=remark,
     )
     return obj
+
+
+@transaction.atomic
+def change_flat_owner(flat, new_user=None, new_owner_name="", reason="", user=None):
+    """Transfer a flat to a new owner and record it in OwnerChangeHistory."""
+    from API.apps.flats.models import FlatOwner, OwnerChangeHistory
+
+    previous_name = flat.owner_name
+    previous_user = flat.owner
+    new_name = (new_owner_name or "").strip() or (
+        (new_user.first_name or new_user.username) if new_user else previous_name
+    )
+    flat.owner = new_user
+    flat.owner_name = new_name
+    flat.save(update_fields=["owner", "owner_name", "updated_at"])
+
+    if new_user is not None:
+        FlatOwner.objects.update_or_create(
+            flat=flat, user=new_user, defaults={"is_primary": True},
+        )
+    OwnerChangeHistory.objects.create(
+        flat=flat,
+        previous_owner_name=previous_name,
+        new_owner_name=new_name,
+        previous_user=previous_user,
+        new_user=new_user,
+        reason=reason,
+        changed_by=user,
+    )
+    return flat

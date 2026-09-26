@@ -16,6 +16,7 @@ urlpatterns = [
     path("ui/admin/expenses/", views.expenses_page, name="admin-expenses"),
     path("ui/admin/issues/", views.issues_page, name="admin-issues"),
     path("ui/admin/reports/", views.reports_page, name="admin-reports"),
+    path("ui/admin/settings/", views.settings_page, name="admin-settings"),
     # resident
     path("ui/resident/payments/", views.resident_payments, name="resident-payments"),
     path("ui/resident/issues/", views.resident_issues, name="resident-issues"),

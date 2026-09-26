@@ -16,7 +16,7 @@
       <span>All Flats</span>
       <div class="d-flex gap-2">
         <select id="wing-filter" class="form-select form-select-sm" style="width:auto"><option value="">All Wings</option></select>
-        <input id="search-flat" class="form-control form-control-sm" placeholder="Search owner…">
+        <input id="search-flat" class="form-control form-control-sm" placeholder="Search flat no / owner / wing…">
       </div>
     </div>
     <div class="card-body p-0">
@@ -95,7 +95,7 @@
 {% block extra_js %}
 <script>
 $(function () {
-  const { Api, esc, toastSuccess } = SMS; const { renderPager } = SMSUI;
+  const { Api, esc, toastSuccess } = SMS; const { renderPager } = SMSUI; const PS = window.SMS_PAGE_SIZE || 10;
   let page = 1, editingId = null;
 
   function loadWings() {
@@ -124,7 +124,7 @@ $(function () {
       const rows = d.results || d || [];
       $("#flats-tbody").html(rows.length ? rows.map((f, i) => `
         <tr>
-          <td>${(page - 1) * 20 + i + 1}</td>
+          <td>${(page - 1) * PS + i + 1}</td>
           <td>${esc(f.wing_name)}</td><td class="fw-semibold">${esc(f.flat_no)}</td>
           <td>${f.floor}</td><td>${f.area_sqft || "-"}</td>
           <td>${esc(f.owner_name)}${f.owner_username ? `<div class="text-muted small">@${esc(f.owner_username)}</div>` : ""}</td>
@@ -132,12 +132,13 @@ $(function () {
           <td>₹${Number(f.monthly_maintenance).toLocaleString("en-IN")}</td>
           <td>${f.is_active ? '<span class="status-pill st-approved">active</span>' : '<span class="status-pill st-rejected">inactive</span>'}</td>
           <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary me-1" data-history="${f.id}" data-label="${esc(f.wing_name)}-${esc(f.flat_no)}" title="History"><i class="bi bi-clock-history"></i></button>
             <button class="btn btn-sm btn-outline-primary me-1" data-edit="${f.id}" title="Edit"><i class="bi bi-pencil"></i></button>
             ${f.is_active ? `<button class="btn btn-sm btn-outline-danger" data-deactivate="${f.id}" title="Deactivate"><i class="bi bi-slash-circle"></i></button>` : ""}
           </td>
         </tr>`).join("")
         : `<tr><td colspan="10" class="text-center text-muted py-5">No flats found</td></tr>`);
-      renderPager("#flats-pager", d.count || rows.length, page, 20, loadFlats);
+      renderPager("#flats-pager", d.count || rows.length, page, d.page_size || PS, loadFlats);
     });
   }
 
