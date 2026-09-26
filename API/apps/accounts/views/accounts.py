@@ -1,12 +1,15 @@
+from rest_framework import serializers as drf_serializers
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes, throttle_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from API.apps.accounts.models import User
 from API.apps.accounts.serializers import (
-    LoginSerializer, PasswordChangeSerializer, UserCreateSerializer, UserSerializer,
+    LoginSerializer, PasswordChangeSerializer, UserCreateSerializer,
+    UserSerializer, UserUpdateWithFlatSerializer,
 )
 from API.apps.core.models import ActivityLog
 from API.apps.core.permissions import IsAdmin
@@ -41,12 +44,30 @@ class LoginView(APIView):
 
 
 class LogoutView(APIView):
-    """Optionally blacklist isn't wired; client discards tokens."""
+    """Client discards tokens; endpoint kept for symmetry + activity logging."""
 
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         return api_success("Logged out successfully")
+
+
+class EnvelopeTokenRefreshView(APIView):
+    """POST /api/v1/auth/token/refresh/ wrapped in the standard envelope so
+    the jQuery layer can transparently renew an expired access token."""
+
+    permission_classes = [AllowAny]
+    authentication_classes = []  # old access token is expired by definition
+
+    def post(self, request):
+        from rest_framework_simplejwt.exceptions import TokenError
+        from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+        ser = TokenRefreshSerializer(data={"refresh": request.data.get("refresh", "")})
+        try:
+            ser.is_valid(raise_exception=True)
+        except (ValidationError, TokenError):
+            return api_error("Session expired. Please login again.", status=401)
+        return api_success("Token refreshed", data=ser.validated_data)
 
 
 class MeView(APIView):
@@ -85,7 +106,11 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_serializer_class(self):
-        return UserCreateSerializer if self.action == "create" else UserSerializer
+        if self.action == "create":
+            return UserCreateSerializer
+        if self.action in ("update", "partial_update"):
+            return UserUpdateWithFlatSerializer
+        return UserSerializer
 
     def list(self, request, *args, **kwargs):
         qs = self.queryset
@@ -111,11 +136,11 @@ class UserViewSet(viewsets.ModelViewSet):
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return api_error("User not found", status=404)
-        ser = UserSerializer(user, data=request.data, partial=True)
+        ser = UserUpdateWithFlatSerializer(user, data=request.data, partial=True)
         if not ser.is_valid():
             return api_error("Validation failed", errors=ser.errors)
         ser.save()
-        return api_success("User updated successfully", data=ser.data)
+        return api_success("User updated successfully", data=UserSerializer(user).data)
 
     def destroy(self, request, pk=None, *args, **kwargs):
         try:

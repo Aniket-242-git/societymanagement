@@ -1,8 +1,8 @@
-# Python bytecode
+# Compiled files
 __pycache__/
 *.pyc
 
-# Database files
+# Database
 db.sqlite3
 
 # Virtual environments

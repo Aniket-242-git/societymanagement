@@ -34,6 +34,34 @@
     return m ? decodeURIComponent(m[2]) : "";
   }
 
+  // ---------------- session helpers (JWT tokens live in localStorage) ----
+  let redirectingToLogin = false;
+  function forceLogin() {
+    if (redirectingToLogin) return;
+    redirectingToLogin = true;
+    Auth.clear();
+    window.location.href = "/ui/login/?next=" + encodeURIComponent(window.location.pathname);
+  }
+  function logoutSession() {
+    forceLogin();
+  }
+  function bootstrapSession() {
+    // UI pages are session-authenticated server-side. On a hard refresh the
+    // JWT may be missing/expired while the Django session is still valid, so
+    // fetch /auth/me/ silently to (re)acquire a token pair for AJAX calls.
+    if (!window.SMS_BOOTSTRAP || redirectingToLogin) return;
+    $.ajax({
+      url: API_BASE + "auth/me/",
+      method: "GET",
+      headers: { Accept: "application/json" },
+      xhrFields: { withCredentials: true },
+    }).done(function (res) {
+      if (res && res.success && res.data && res.data.tokens) {
+        Auth.set(res.data.tokens.access, res.data.tokens.refresh);
+      }
+    });
+  }
+
   let activeRequests = 0;
   function showLoader() {
     activeRequests += 1;

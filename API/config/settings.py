@@ -72,8 +72,23 @@ WSGI_APPLICATION = "API.config.wsgi.application"
 ASGI_APPLICATION = "API.config.asgi.application"
 
 # ---------------------------------------------------------------- database
-# PostgreSQL recommended for production; SQLite used as zero-config default.
-if os.environ.get("USE_POSTGRES") == "1":
+# Shared-hosting friendly: SQLite is the default (zero config, works on
+# cPanel / Hostinger "C plan"). If your host provides a MySQL or PostgreSQL
+# database, set the matching env vars below and it will be picked up
+# automatically (driver installed via requirements.txt optional line).
+if os.environ.get("USE_MYSQL") == "1":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.mysql",
+            "NAME": os.environ.get("MYSQL_DB", ""),
+            "USER": os.environ.get("MYSQL_USER", ""),
+            "PASSWORD": os.environ.get("MYSQL_PASSWORD", ""),
+            "HOST": os.environ.get("MYSQL_HOST", "localhost"),
+            "PORT": os.environ.get("MYSQL_PORT", "3306"),
+            "OPTIONS": {"charset": "utf8mb4"},
+        }
+    }
+elif os.environ.get("USE_POSTGRES") == "1":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
