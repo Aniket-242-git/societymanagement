@@ -1,0 +1,53 @@
+# ============================================================
+# Society Management System — Python Dependencies
+# TUNED FOR SHARED HOSTING ("C plan": cPanel / Hostinger /
+# GoDaddy-style Linux shared hosting).
+#
+# Constraints respected:
+#   - pure-Python, low-memory packages only (no pandas / numpy)
+#   - no build-toolchain packages (argon2-cffi needs libargon2)
+#   - SQLite by default (shared hosts often lack Postgres);
+#     psycopg is optional & commented
+#   - Celery + Redis NOT usable on shared plans (no Redis broker,
+#     no daemons) -> notifications run synchronously instead;
+#     cron jobs are supported via Django management commands
+#
+# Install on shared hosting (SSH):
+#   python3 -m venv venv && source venv/bin/activate
+#   pip install -r requirements.txt
+# ============================================================
+
+# ---------------- Core framework ----------------
+Django==6.1.1                        # Web framework (UI + ORM)
+djangorestframework==3.18.1          # DRF — REST API layer (API/)
+
+# ---------------- Authentication / Security ----------------
+djangorestframework-simplejwt==5.5.1 # JWT auth (access + refresh tokens)
+PyJWT==2.15.0                        # Underlying JWT library
+                                     # Password hashing stays on Django's
+                                     # default PBKDF2 (pure Python, works
+                                     # everywhere — Argon2 skipped for
+                                     # shared-hosting compatibility)
+
+# ---------------- API Documentation ----------------
+drf-spectacular==0.30.0              # OpenAPI 3 / Swagger UI at /api/docs/
+
+# ---------------- Reports / Excel export ----------------
+openpyxl==3.1.5                      # Pure-Python Excel writer used by the
+                                     # reports dashboard (pandas intentionally
+                                     # removed to keep memory footprint small)
+
+# ---------------- Media handling ----------------
+Pillow==11.3.0                       # Image processing for receipts / issue
+                                     # photos uploaded via ImageField
+
+# ---------------- Optional: PostgreSQL (only if your host provides it) ------
+# Uncomment when USE_POSTGRES=1 and the host has created a DB for you:
+# psycopg[binary]==3.2.9
+
+# ---------------- NOT usable on shared hosting (kept for VPS later) ---------
+# celery / redis need a running Redis server + daemon processes, which
+# shared "C plan" hosts do not provide. Notifications are sent inline.
+# celery==5.4.0
+# redis==5.2.1
+# django-celery-beat==2.7.0
