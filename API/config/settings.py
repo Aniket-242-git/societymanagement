@@ -9,11 +9,33 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent  # /workspace
+from API.config.env import load_dotenv
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-key-change-in-production")
-DEBUG = os.environ.get("DJANGO_DEBUG", "1") == "1"
-ALLOWED_HOSTS = ["*"]
+load_dotenv()  # project-root .env -> os.environ (existing vars win)
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent  # project root
+
+
+def env(key, default=""):
+    return os.environ.get(key, default)
+
+
+def env_int(key, default):
+    try:
+        return int(os.environ.get(key, default))
+    except (TypeError, ValueError):
+        return default
+
+
+# ENV=dev  -> SQLite (zero config).  ENV=prod -> MySQL (shared hosting C plan).
+APP_ENV = env("ENV", "dev").lower()
+
+SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure-key-change-in-production")
+DEBUG = env("DJANGO_DEBUG", "1" if APP_ENV != "prod" else "0") == "1"
+ALLOWED_HOSTS = [h.strip() for h in env("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()] or ["*"]
+
+SITE_NAME = env("SITE_NAME", "Green Valley Society")
+PAGE_SIZE = env_int("PAGE_SIZE", 10)
 
 # ---------------------------------------------------------------- apps
 INSTALLED_APPS = [
@@ -72,31 +94,33 @@ WSGI_APPLICATION = "API.config.wsgi.application"
 ASGI_APPLICATION = "API.config.asgi.application"
 
 # ---------------------------------------------------------------- database
-# Shared-hosting friendly: SQLite is the default (zero config, works on
-# cPanel / Hostinger "C plan"). If your host provides a MySQL or PostgreSQL
-# database, set the matching env vars below and it will be picked up
-# automatically (driver installed via requirements.txt optional line).
-if os.environ.get("USE_MYSQL") == "1":
+# ENV=prod  -> MySQL   (shared hosting "C plan": create DB/user in cPanel,
+#                       fill DB_* vars in .env)
+# ENV=dev   -> SQLite  (default, zero config)
+# DB_ENGINE (sqlite|mysql) overrides the ENV-based choice when set.
+_db_engine = env("DB_ENGINE", "").lower() or ("mysql" if APP_ENV == "prod" else "sqlite")
+
+if _db_engine == "mysql":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
-            "NAME": os.environ.get("MYSQL_DB", ""),
-            "USER": os.environ.get("MYSQL_USER", ""),
-            "PASSWORD": os.environ.get("MYSQL_PASSWORD", ""),
-            "HOST": os.environ.get("MYSQL_HOST", "localhost"),
-            "PORT": os.environ.get("MYSQL_PORT", "3306"),
+            "NAME": env("DB_NAME", "society_db"),
+            "USER": env("DB_USER", ""),
+            "PASSWORD": env("DB_PASSWORD", ""),
+            "HOST": env("DB_HOST", "localhost"),
+            "PORT": env("DB_PORT", "3306"),
             "OPTIONS": {"charset": "utf8mb4"},
         }
     }
-elif os.environ.get("USE_POSTGRES") == "1":
+elif _db_engine == "postgres":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ.get("PGDATABASE", "society_db"),
-            "USER": os.environ.get("PGUSER", "postgres"),
-            "PASSWORD": os.environ.get("PGPASSWORD", ""),
-            "HOST": os.environ.get("PGHOST", "localhost"),
-            "PORT": os.environ.get("PGPORT", "5432"),
+            "NAME": env("DB_NAME", "society_db"),
+            "USER": env("DB_USER", "postgres"),
+            "PASSWORD": env("DB_PASSWORD", ""),
+            "HOST": env("DB_HOST", "localhost"),
+            "PORT": env("DB_PORT", "5432"),
         }
     }
 else:
@@ -125,7 +149,7 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_PAGINATION_CLASS": "API.apps.core.pagination.StandardPagination",
-    "PAGE_SIZE": 20,
+    "PAGE_SIZE": PAGE_SIZE,
     "DEFAULT_ORDERING": ["-created_at"],
     "EXCEPTION_HANDLER": "API.apps.core.exceptions.api_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -138,8 +162,8 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env_int("JWT_ACCESS_MINUTES", 60)),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env_int("JWT_REFRESH_DAYS", 7)),
     "ROTATE_REFRESH_TOKENS": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
@@ -168,7 +192,13 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------- upload limits
-MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_UPLOAD_SIZE = env_int("MAX_UPLOAD_SIZE_MB", 5) * 1024 * 1024
 ALLOWED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"]
 
 LOGIN_URL = "/ui/login/"
+
+# ---------------------------------------------------------------- proxy / ssl (shared hosting)
+if env("BEHIND_PROXY", "0") == "1":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = not DEBUG
+    CSRF_COOKIE_SECURE = not DEBUG

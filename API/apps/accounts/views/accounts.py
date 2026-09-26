@@ -12,6 +12,7 @@ from API.apps.accounts.serializers import (
     UserSerializer, UserUpdateWithFlatSerializer,
 )
 from API.apps.core.models import ActivityLog
+from API.apps.core.exceptions import first_error_message
 from API.apps.core.permissions import IsAdmin
 from API.apps.core.responses import api_error, api_success
 
@@ -27,12 +28,9 @@ class LoginView(APIView):
     def post(self, request):
         ser = LoginSerializer(data=request.data)
         if not ser.is_valid():
-            detail = ser.errors.get("detail") or ser.errors
-            return api_error(
-                "Invalid username or password." if "detail" in ser.errors else "Validation failed",
-                errors=ser.errors if "detail" not in ser.errors else None,
-                status=status.HTTP_401_UNAUTHORIZED if "detail" in ser.errors else 400,
-            )
+            if "detail" in ser.errors:
+                return api_error(ser.errors["detail"][0], status=status.HTTP_401_UNAUTHORIZED)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         user = ser.validated_data["user"]
         tokens = ser.get_tokens(user)
         ActivityLog.objects.create(user=user, action="login", model_name="User",
@@ -79,7 +77,7 @@ class MeView(APIView):
     def patch(self, request):
         ser = UserSerializer(request.user, data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("Profile updated successfully", data=ser.data)
 
@@ -90,7 +88,7 @@ class ChangePasswordView(APIView):
     def post(self, request):
         ser = PasswordChangeSerializer(data=request.data, context={"request": request})
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         request.user.set_password(ser.validated_data["new_password"])
         request.user.must_reset_password = False
         request.user.save(update_fields=["password", "must_reset_password"])
@@ -113,10 +111,18 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
     def list(self, request, *args, **kwargs):
-        qs = self.queryset
+        qs = self.queryset.prefetch_related("owned_flats__wing")
         role = request.query_params.get("role")
         if role:
             qs = qs.filter(role=role)
+        search = request.query_params.get("search")
+        if search:
+            from API.apps.core.pagination import build_search_q
+            q = build_search_q(search, [
+                "username", "first_name", "last_name", "email", "phone",
+                "owned_flats__flat_no", "owned_flats__owner_name",
+            ])
+            qs = qs.filter(q).distinct()
         page = self.paginate_queryset(qs)
         if page is not None:
             return self.get_paginated_response(self.get_serializer(page, many=True).data)
@@ -125,7 +131,7 @@ class UserViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         ser = UserCreateSerializer(data=request.data)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         user = ser.save()
         ActivityLog.objects.create(user=request.user, action="create", model_name="User",
                                    object_id=user.id, remark=f"Created user {user.username}")
@@ -138,7 +144,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return api_error("User not found", status=404)
         ser = UserUpdateWithFlatSerializer(user, data=request.data, partial=True)
         if not ser.is_valid():
-            return api_error("Validation failed", errors=ser.errors)
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
         return api_success("User updated successfully", data=UserSerializer(user).data)
 
