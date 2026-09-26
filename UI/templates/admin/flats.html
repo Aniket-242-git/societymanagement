@@ -92,11 +92,20 @@
 </div>
 {% endblock %}
 
+{# FLAT HISTORY: shared modal markup + JS controller (see partials/flat_history_modal.html) #}
+{% include "partials/flat_history_modal.html" %}
+
 {% block extra_js %}
 <script>
 $(function () {
   const { Api, esc, toastSuccess } = SMS; const { renderPager } = SMSUI; const PS = window.SMS_PAGE_SIZE || 10;
   let page = 1, editingId = null;
+
+  // FLAT HISTORY: clock button on each row opens the shared modal
+  // (SMSFlatHistory is defined in partials/flat_history_modal.html).
+  $(document).on("click", "[data-history]", function () {
+    SMSFlatHistory.open($(this).data("history"), $(this).data("label"));
+  });
 
   function loadWings() {
     Api.get("wings/").done(function (res) {
