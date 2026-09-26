@@ -3,18 +3,22 @@ from django.db.models import Count
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 
 from API.apps.core.permissions import IsAdmin, IsAdminOrCommittee
 from API.apps.core.exceptions import first_error_message
 from API.apps.core.pagination import EnvelopePaginationMixin, StandardPagination
 from API.apps.core.responses import api_error, api_success
-from API.apps.flats.models import Flat, FlatServiceAuditLog, Service, Wing
+from API.apps.core.models import ExpenseCategory
+from API.apps.flats.models import (
+    Flat, FlatOwner, FlatServiceAuditLog, OwnerChangeHistory, Service, Tenant, Wing,
+)
 from API.apps.flats.serializers import (
     FlatCreateSerializer, FlatDetailSerializer, FlatListSerializer,
     FlatServiceAuditLogSerializer, FlatServiceToggleSerializer,
-    ServiceSerializer, WingSerializer,
+    OwnerChangeHistorySerializer, ServiceSerializer, TenantSerializer, WingSerializer,
 )
-from API.apps.flats.services import set_flat_service
+from API.apps.flats.services import change_flat_owner, set_flat_service
 
 
 class WingViewSet(viewsets.ModelViewSet):
@@ -36,7 +40,7 @@ class WingViewSet(viewsets.ModelViewSet):
         return api_success("Wing created successfully", data=ser.data, status=status.HTTP_201_CREATED)
 
 
-class FlatViewSet(viewsets.ModelViewSet):
+class FlatViewSet(EnvelopePaginationMixin, viewsets.ModelViewSet):
     permission_classes = [IsAdminOrCommittee]
     filterset_fields = ["wing", "is_active"]
 
@@ -50,7 +54,12 @@ class FlatViewSet(viewsets.ModelViewSet):
         if active in ("true", "false"):
             qs = qs.filter(is_active=active == "true")
         if search:
-            qs = qs.filter(owner_name__icontains=search)
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(flat_no__icontains=search)
+                | Q(owner_name__icontains=search)
+                | Q(wing__name__icontains=search)
+            )
         return qs.order_by("-created_at")
 
     def get_serializer_class(self):
@@ -84,7 +93,7 @@ class FlatViewSet(viewsets.ModelViewSet):
             obj = Flat.objects.get(pk=pk)
         except Flat.DoesNotExist:
             return api_error("Flat not found", status=404)
-        ser = FlatCreateSerializer(obj, data=request.data, partial=True)
+        ser = FlatCreateSerializer(obj, data=request.data, partial=True, context={"request": request})
         if not ser.is_valid():
             return api_error(first_error_message(ser.errors), errors=ser.errors)
         ser.save()
@@ -99,6 +108,98 @@ class FlatViewSet(viewsets.ModelViewSet):
         obj.is_active = False
         obj.save(update_fields=["is_active", "updated_at"])
         return api_success("Flat deactivated successfully")
+
+    # ------------------------------------------------------------- history tabs
+    def _check_flat_access(self, request, flat_id):
+        """Return (flat, error_response). Residents may only access their own flats."""
+        try:
+            flat = Flat.objects.select_related("wing").get(pk=flat_id)
+        except (Flat.DoesNotExist, TypeError, ValueError):
+            return None, api_error("Flat not found", status=404)
+        if not request.user.is_staff_role:
+            allowed = FlatOwner.objects.filter(user=request.user, flat=flat).exists() or flat.owner_id == request.user.pk
+            if not allowed:
+                return None, api_error("You do not have access to this flat.", status=403)
+        return flat, None
+
+    @action(detail=False, methods=["get"])
+    def maintenance_history(self, request):
+        """Maintenance fee history of a flat since it was first assigned."""
+        flat, err = self._check_flat_access(request, request.query_params.get("flat"))
+        if err:
+            return err
+        from API.apps.payments.models import MaintenancePayment
+        from API.apps.payments.serializers import PaymentListSerializer
+        qs = (MaintenancePayment.objects.filter(flat=flat, is_deleted=False)
+             .select_related("submitted_by", "approved_by").order_by("-created_at"))
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(PaymentListSerializer(page, many=True).data)
+        return api_success(data=PaymentListSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=["get"])
+    def service_history(self, request):
+        """Enable/disable audit trail of a flat."""
+        flat, err = self._check_flat_access(request, request.query_params.get("flat"))
+        if err:
+            return err
+        qs = (FlatServiceAuditLog.objects.filter(flat=flat)
+              .select_related("service", "changed_by").order_by("-timestamp"))
+        page = self.paginate_queryset(qs)
+        ser = FlatServiceAuditLogSerializer
+        if page is not None:
+            return self.get_paginated_response(ser(page, many=True).data)
+        return api_success(data=ser(qs, many=True).data)
+
+    @action(detail=False, methods=["get", "post"], permission_classes=[IsAuthenticated])
+    def tenants(self, request):
+        """Tenant history of a flat (GET list / POST add — admin only for write)."""
+        flat, err = self._check_flat_access(request, request.query_params.get("flat") or request.data.get("flat"))
+        if err:
+            return err
+        if request.method == "GET":
+            qs = Tenant.objects.filter(flat=flat).select_related("added_by")
+            page = self.paginate_queryset(qs)
+            if page is not None:
+                return self.get_paginated_response(TenantSerializer(page, many=True).data)
+            return api_success(data=TenantSerializer(qs, many=True).data)
+        if not request.user.is_staff_role:
+            return api_error("Only admin can add tenants.", status=403)
+        ser = TenantSerializer(data=request.data)
+        if not ser.is_valid():
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
+        ser.save(added_by=request.user, flat=flat)
+        return api_success("Tenant added successfully", data=ser.data, status=201)
+
+    @action(detail=False, methods=["get", "post"], permission_classes=[IsAdminOrCommittee])
+    def owner_history(self, request):
+        """Owner-change history (GET) and owner transfer (POST) for a flat."""
+        flat, err = self._check_flat_access(request, request.query_params.get("flat") or request.data.get("flat"))
+        if err:
+            return err
+        if request.method == "GET":
+            qs = OwnerChangeHistory.objects.filter(flat=flat).select_related("changed_by")
+            page = self.paginate_queryset(qs)
+            if page is not None:
+                return self.get_paginated_response(OwnerChangeHistorySerializer(page, many=True).data)
+            return api_success(data=OwnerChangeHistorySerializer(qs, many=True).data)
+        new_user_id = request.data.get("new_user")
+        new_name = (request.data.get("new_owner_name") or "").strip()
+        if not new_user_id and not new_name:
+            return api_error("Provide new_user (id) or new_owner_name to transfer the flat.")
+        new_user = None
+        if new_user_id:
+            from API.apps.accounts.models import User
+            try:
+                new_user = User.objects.get(pk=new_user_id)
+            except User.DoesNotExist:
+                return api_error("Selected user not found.", status=404)
+        flat = change_flat_owner(
+            flat, new_user=new_user, new_owner_name=new_name,
+            reason=(request.data.get("reason") or "").strip(), user=request.user,
+        )
+        return api_success("Flat ownership transferred successfully",
+                           data=FlatDetailSerializer(flat).data)
 
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser, FormParser, JSONParser])
     def bulk_import(self, request):
@@ -215,3 +316,112 @@ class FlatServiceViewSet(EnvelopePaginationMixin, viewsets.ViewSet):
             f"Service {ser.validated_data['action']}d for flat successfully",
             data=FlatServiceSerializer(link).data, status=201,
         )
+
+
+class TenantViewSet(viewsets.ModelViewSet):
+    """CRUD over tenant records (admin/committee)."""
+
+    permission_classes = [IsAdminOrCommittee]
+    serializer_class = TenantSerializer
+    pagination_class = StandardPagination
+
+    def get_queryset(self):
+        qs = Tenant.objects.select_related("flat", "flat__wing", "added_by")
+        flat = self.request.query_params.get("flat")
+        if flat:
+            qs = qs.filter(flat_id=flat)
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(Q(name__icontains=search) | Q(phone__icontains=search))
+        return qs.order_by("-move_in_date", "-created_at")
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_queryset()
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(self.get_serializer(page, many=True).data)
+        return api_success(data=self.get_serializer(qs, many=True).data)
+
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        if not ser.is_valid():
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
+        ser.save(added_by=request.user)
+        return api_success("Tenant added successfully", data=ser.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_object(), data=request.data, partial=True)
+        if not ser.is_valid():
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
+        ser.save()
+        return api_success("Tenant updated successfully", data=ser.data)
+
+    def destroy(self, request, *args, **kwargs):
+        obj = self.get_object()
+        obj.status = "vacated"
+        from datetime import date
+        if not obj.move_out_date:
+            obj.move_out_date = date.today()
+        obj.save(update_fields=["status", "move_out_date", "updated_at"])
+        return api_success("Tenant marked as vacated")
+
+
+class ExpenseCategoryViewSet(viewsets.ModelViewSet):
+    """Settings tab: manage expense categories (visible to all authenticated users)."""
+
+    pagination_class = StandardPagination
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticated()]
+        return [IsAdmin()]
+
+    def get_queryset(self):
+        qs = ExpenseCategory.objects.all()
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(name__icontains=search)
+        return qs.order_by("name")
+
+    def get_serializer_class(self):
+        from rest_framework import serializers as drf_serializers
+
+        class _ExpenseCategorySerializer(drf_serializers.ModelSerializer):
+            class Meta:
+                model = ExpenseCategory
+                fields = ["id", "name", "is_active", "created_at"]
+        return _ExpenseCategorySerializer
+
+    def list(self, request, *args, **kwargs):
+        ser = self.get_serializer(self.get_queryset(), many=True)
+        return api_success(data=ser.data)
+
+    def create(self, request, *args, **kwargs):
+        ser = self.get_serializer(data=request.data)
+        if not ser.is_valid():
+            msg = "This expense category already exists." if ExpenseCategory.objects.filter(
+                name__iexact=request.data.get("name", "")).exists() else first_error_message(ser.errors)
+            return api_error(msg, errors=ser.errors)
+        ser.save()
+        return api_success("Expense category created successfully", data=ser.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            obj = ExpenseCategory.objects.get(pk=kwargs.get("pk"))
+        except ExpenseCategory.DoesNotExist:
+            return api_error("Expense category not found", status=404)
+        ser = self.get_serializer(obj, data=request.data, partial=True)
+        if not ser.is_valid():
+            return api_error(first_error_message(ser.errors), errors=ser.errors)
+        ser.save()
+        return api_success("Expense category updated successfully", data=ser.data)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            obj = ExpenseCategory.objects.get(pk=kwargs.get("pk"))
+        except ExpenseCategory.DoesNotExist:
+            return api_error("Expense category not found", status=404)
+        obj.is_active = False
+        obj.save(update_fields=["is_active"])
+        return api_success("Expense category deactivated successfully")
