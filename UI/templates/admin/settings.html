@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Settings — Admin{% endblock %}
+{% block content %}
+<div class="container-fluid px-lg-4">
+  <h3 class="fw-bold mb-4"><i class="bi bi-gear me-2"></i>Settings</h3>
+
+  <div class="row g-4">
+    <!-- ===================== WINGS ===================== -->
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center rounded-top-4">
+          <span class="fw-bold"><i class="bi bi-diagram-3 me-2 text-success"></i>Wings / Blocks</span>
+          <button class="btn btn-sm btn-success" id="btn-add-wing"><i class="bi bi-plus-lg me-1"></i>Add Wing</button>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>#</th><th>Name</th><th>Flats</th><th class="text-end">Actions</th></tr></thead>
+              <tbody id="wings-tbody"><tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer bg-white" id="wings-pager"></div>
+      </div>
+    </div>
+
+    <!-- ===================== EXPENSE CATEGORIES ===================== -->
+    <div class="col-lg-6">
+      <div class="card panel-card h-100">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center rounded-top-4">
+          <span class="fw-bold"><i class="bi bi-tags me-2 text-primary"></i>Expense Categories</span>
+          <button class="btn btn-sm btn-primary" id="btn-add-cat"><i class="bi bi-plus-lg me-1"></i>Add Category</button>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>#</th><th>Name</th><th>Status</th><th class="text-end">Actions</th></tr></thead>
+              <tbody id="cats-tbody"><tr><td colspan="4" class="text-center text-muted py-4">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer bg-white" id="cats-pager"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Wing add/edit modal -->
+<div class="modal fade" id="wingModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="wing-modal-title">Add Wing</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="wing-form">
+        <div class="modal-body">
+          <label class="form-label">Wing Name (e.g. A, B, C)</label>
+          <input name="name" class="form-control" required maxlength="10">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Category add/edit modal -->
+<div class="modal fade" id="catModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content rounded-4">
+      <div class="modal-header"><h5 class="modal-title" id="cat-modal-title">Add Category</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="cat-form">
+        <div class="modal-body">
+          <label class="form-label">Category Name</label>
+          <input name="name" class="form-control" required maxlength="50">
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" name="is_active" id="cat-active" checked>
+            <label class="form-check-label" for="cat-active">Active</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+$(function () {
+  const { Api, esc, toastSuccess } = SMS; const { renderPager } = SMSUI; const PS = window.SMS_PAGE_SIZE || 10;
+  let wingPage = 1, catPage = 1, editWingId = null, editCatId = null;
+
+  /* ------------------------------- Wings ------------------------------- */
+  function loadWings(p) {
+    wingPage = p || 1;
+    Api.get("wings/", { page: wingPage }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#wings-tbody").html(rows.length ? rows.map((w, i) => `
+        <tr>
+          <td>${(wingPage - 1) * PS + i + 1}</td>
+          <td class="fw-semibold">Wing ${esc(w.name)}</td>
+          <td>${w.flat_count ?? 0}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary me-1" data-wing-edit="${w.id}" data-name="${esc(w.name)}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger" data-wing-del="${w.id}"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="4" class="text-center text-muted py-4">No wings yet</td></tr>`);
+      if (d.count !== undefined) renderPager("#wings-pager", d.count, wingPage, d.page_size || PS, loadWings);
+      else $("#wings-pager").empty();
+      window._wingsCache = rows;
+    });
+  }
+
+  $("#btn-add-wing").on("click", function () {
+    editWingId = null; $("#wing-modal-title").text("Add Wing");
+    $("#wing-form")[0].reset(); $("#wingModal").modal("show");
+  });
+  $(document).on("click", "[data-wing-edit]", function () {
+    editWingId = $(this).data("wing-edit");
+    $("#wing-modal-title").text("Edit Wing");
+    $("#wing-form [name=name]").val($(this).data("name"));
+    $("#wingModal").modal("show");
+  });
+  $("#wing-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = { name: $(this).find("[name=name]").val().trim() };
+    const req = editWingId ? Api.patch(`wings/${editWingId}/`, data) : Api.post("wings/", data);
+    req.done(function (res) {
+      if (res.success) { toastSuccess(res.message); $("#wingModal").modal("hide"); loadWings(wingPage); }
+    });
+  });
+  $(document).on("click", "[data-wing-del]", function () {
+    if (!confirm("Delete this wing? Flats in it must be moved/deactivated first.")) return;
+    Api.del(`wings/${$(this).data("wing-del")}/`).done(function (res) {
+      toastSuccess(res.message); loadWings(1);
+    });
+  });
+
+  /* --------------------------- Expense categories ---------------------- */
+  function loadCats(p) {
+    catPage = p || 1;
+    Api.get("expense-categories/", { page: catPage }).done(function (res) {
+      const d = res.data || {};
+      const rows = d.results || d || [];
+      $("#cats-tbody").html(rows.length ? rows.map((c, i) => `
+        <tr>
+          <td>${(catPage - 1) * PS + i + 1}</td>
+          <td class="fw-semibold">${esc(c.name)}</td>
+          <td>${c.is_active ? '<span class="status-pill st-approved">active</span>' : '<span class="status-pill st-rejected">inactive</span>'}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary me-1" data-cat-edit="${c.id}" data-name="${esc(c.name)}" data-active="${c.is_active}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger" data-cat-del="${c.id}"><i class="bi bi-trash"></i></button>
+          </td>
+        </tr>`).join("")
+        : `<tr><td colspan="4" class="text-center text-muted py-4">No categories yet</td></tr>`);
+      if (d.count !== undefined) renderPager("#cats-pager", d.count, catPage, d.page_size || PS, loadCats);
+      else $("#cats-pager").empty();
+    });
+  }
+
+  $("#btn-add-cat").on("click", function () {
+    editCatId = null; $("#cat-modal-title").text("Add Category");
+    $("#cat-form")[0].reset(); $("#cat-active").prop("checked", true);
+    $("#catModal").modal("show");
+  });
+  $(document).on("click", "[data-cat-edit]", function () {
+    editCatId = $(this).data("cat-edit");
+    $("#cat-modal-title").text("Edit Category");
+    $("#cat-form [name=name]").val($(this).data("name"));
+    $("#cat-active").prop("checked", String($(this).data("active")) === "True" || $(this).data("active") === true);
+    $("#catModal").modal("show");
+  });
+  $("#cat-form").on("submit", function (e) {
+    e.preventDefault();
+    const data = { name: $(this).find("[name=name]").val().trim(), is_active: $("#cat-active").prop("checked") };
+    const req = editCatId ? Api.patch(`expense-categories/${editCatId}/`, data) : Api.post("expense-categories/", data);
+    req.done(function (res) {
+      if (res.success) { toastSuccess(res.message); $("#catModal").modal("hide"); loadCats(catPage); }
+    });
+  });
+  $(document).on("click", "[data-cat-del]", function () {
+    if (!confirm("Delete this expense category?")) return;
+    Api.del(`expense-categories/${$(this).data("cat-del")}/`).done(function (res) {
+      toastSuccess(res.message); loadCats(1);
+    });
+  });
+
+  loadWings(1); loadCats(1);
+});
+</script>
+{% endblock %}
