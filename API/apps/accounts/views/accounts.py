@@ -111,10 +111,13 @@ class UserViewSet(viewsets.ModelViewSet):
         return UserSerializer
 
     def list(self, request, *args, **kwargs):
-        qs = self.queryset.prefetch_related("owned_flats__wing")
+        qs = self.queryset.prefetch_related("owned_flats__wing", "flat_links__flat__wing")
         role = request.query_params.get("role")
         if role:
             qs = qs.filter(role=role)
+        active = request.query_params.get("is_active")
+        if active in ("true", "false"):
+            qs = qs.filter(is_active=active == "true")
         search = request.query_params.get("search")
         if search:
             from API.apps.core.pagination import build_search_q
@@ -153,9 +156,41 @@ class UserViewSet(viewsets.ModelViewSet):
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return api_error("User not found", status=404)
+        if user.is_superuser:
+            return api_error("Super admin account cannot be deactivated.")
+        # Rule: a resident assigned to flat(s) must have flats revoked first.
+        if not user.is_staff_role:
+            from API.apps.flats.models import FlatOwner
+
+            flats = list(
+                FlatOwner.objects.filter(user=user).select_related("flat", "flat__wing")[:5]
+            ) or list(user.owned_flats.select_related("wing")[:5])
+            if flats:
+                labels = ", ".join(str(f.flat if isinstance(f, FlatOwner) else f) for f in flats)
+                return api_error(
+                    f"User '{user.username}' is assigned to flat(s): {labels}. "
+                    "Revoke the flat(s) first (Edit user → Flats → remove), then deactivate."
+                )
         user.is_active = False
         user.save(update_fields=["is_active"])
+        ActivityLog.objects.create(user=request.user, action="deactivate", model_name="User",
+                                   object_id=user.id, remark=f"Deactivated user {user.username}")
         return api_success("User deactivated successfully")
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAdmin])
+    def activate(self, request, pk=None):
+        """Re-activate a previously deactivated user."""
+        try:
+            user = User.objects.get(pk=pk)
+        except User.DoesNotExist:
+            return api_error("User not found", status=404)
+        if user.is_active:
+            return api_error("User is already active.")
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+        ActivityLog.objects.create(user=request.user, action="activate", model_name="User",
+                                   object_id=user.id, remark=f"Activated user {user.username}")
+        return api_success("User activated successfully", data=UserSerializer(user).data)
 
     @action(detail=True, methods=["post"])
     def reset_password(self, request, pk=None):

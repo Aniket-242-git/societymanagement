@@ -1,3 +1,6 @@
-# Compiled/Binary files
+# Python bytecode
 __pycache__/
 *.pyc
+
+# Database
+db.sqlite3
